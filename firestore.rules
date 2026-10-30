@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isKnownAdminEmail() {
+      return isSignedIn() &&
+        request.auth.token.email != null &&
+        (
+          request.auth.token.email.lower() == 'mhodinshamadari@gmail.com' ||
+          request.auth.token.email.lower() == 'modinshaali786@gmail.com' ||
+          request.auth.token.email.lower() == 'admin@revondental.in' ||
+          request.auth.token.email.lower() == 'admin@gmail.com'
+        );
+    }
+
+    function userDocExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isStaffOrAdmin() {
+      return isSignedIn() && (
+        isKnownAdminEmail() ||
+        !userDocExists() ||
+        (getUserData().get('isSuperAdmin', false) == true) ||
+        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'dentist', 'doctor', 'specialist', 'receptionist', 'staff', 'developer', 'clinic_admin'])
+      );
+    }
+
+    function isAdminOrDev() {
+      return isSignedIn() && (
+        isKnownAdminEmail() ||
+        !userDocExists() ||
+        (getUserData().get('isSuperAdmin', false) == true) ||
+        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'developer', 'clinic_admin'])
+      );
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId) || isStaffOrAdmin();
+      allow delete: if isAdminOrDev();
+    }
+
+    // Clinics collection
+    match /clinics/{clinicId} {
+      allow read, write: if true;
+      
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
+    // Services & Offered Services collections
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /offered_services/{serviceId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /offeredServices/{serviceId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Surgeons / Medical Specialists
+    match /surgeons/{surgeonId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Reviews: Patients create reviews; Staff and Admins manage, toggle visibility, edit, and reply
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Settings (e.g. social handles, clinic configurations)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Appointments
+    match /appointments/{appointmentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    // Reminders
+    match /reminders/{reminderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Support Tickets & Queries
+    match /support_tickets/{ticketId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /support_queries/{queryId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /query_replies/{replyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Invoices / Billing / Bills
+    match /invoices/{invoiceId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /bills/{billId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Monthly Finances & Budget Settings (Earnings, Rent, Salary, Consumables, Other Expenses)
+    match /monthly_finances/{financeId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Itemized Clinic Expenses
+    match /expenses/{expenseId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /clinic_notifications/{notificationId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // System Logs
+    match /system_logs/{logId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

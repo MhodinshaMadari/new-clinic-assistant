@@ -1,0 +1,6 @@
+{
+  "name": "Clinic Assistant",
+  "description": "Clinic Assistant scheduling system with real-time appointment tracking, multi-clinic management, treatment invoices, and monthly earnings & expenses accounting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

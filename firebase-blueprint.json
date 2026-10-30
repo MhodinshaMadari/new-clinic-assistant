@@ -1,0 +1,321 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profiles in the system, distinguishing between patients and staff.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique identifier matching Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "description": "User's email address" },
+        "role": { "type": "string", "enum": ["patient", "dentist", "receptionist", "admin"], "description": "The system role" },
+        "phone": { "type": "string", "description": "User's contact phone number" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "dependents": {
+          "type": "array",
+          "description": "Registered dependents like children or relatives",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "relationship": { "type": "string", "enum": ["Child", "Spouse", "Parent", "Sibling", "Relative", "Other"] },
+              "phone": { "type": "string" },
+              "email": { "type": "string" },
+              "createdAt": { "type": "string", "format": "date-time" }
+            },
+            "required": ["id", "name", "relationship", "createdAt"]
+          }
+        }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Dental appointment detail and status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Appointment document ID" },
+        "patientId": { "type": "string", "description": "UID of the patient" },
+        "patientName": { "type": "string", "description": "Name of the patient" },
+        "patientPhone": { "type": "string", "description": "Phone of the patient" },
+        "patientEmail": { "type": "string", "description": "Email of the patient" },
+        "dentistId": { "type": "string", "description": "UID of the dentist" },
+        "dentistName": { "type": "string", "description": "Name of the dentist" },
+        "dateTime": { "type": "string", "format": "date-time", "description": "Appointment date and time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"], "description": "Appointment status" },
+        "treatment": { "type": "string", "description": "Selected treatment name" },
+        "notes": { "type": "string", "description": "Notes from the patient or dentist" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientId", "patientName", "dentistId", "dentistName", "dateTime", "status", "treatment"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Patient review or testimonial for the portfolio/landing page.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientName": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientName", "rating", "comment"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Log of automated email reminders sent.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "appointmentId": { "type": "string" },
+        "patientEmail": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["sent", "failed"] }
+      },
+      "required": ["appointmentId", "patientEmail", "sentAt", "status"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Treatment invoices detailing equipment, consumables, and consultation fees.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "appointmentId": { "type": "string" },
+        "patientId": { "type": "string" },
+        "patientName": { "type": "string" },
+        "patientEmail": { "type": "string" },
+        "dentistId": { "type": "string" },
+        "dentistName": { "type": "string" },
+        "treatmentName": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "tax": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "remainingAmount": { "type": "number" },
+        "payments": { "type": "array" },
+        "status": { "type": "string", "enum": ["pending", "partially_paid", "collected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["appointmentId", "patientId", "patientName", "dentistId", "dentistName", "treatmentName", "items", "subtotal", "tax", "totalAmount", "status", "createdAt"]
+    },
+    "Surgeon": {
+      "title": "Surgeon",
+      "description": "Board-Certified Surgeons representing the elite clinic panel.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "specialty": { "type": "string" },
+        "bio": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "isBoardCertified": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "consultationTiming": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "specialty", "bio", "email", "isBoardCertified", "isActive", "consultationTiming", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Clinic notifications and announcements published by administrators.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "content", "createdAt", "createdBy"]
+    },
+    "SupportQuery": {
+      "title": "SupportQuery",
+      "description": "Support queries and feedback submitted by users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "replied"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "userEmail", "subject", "message", "status", "createdAt"]
+    },
+    "QueryReply": {
+      "title": "QueryReply",
+      "description": "Replies to support queries and feedback.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "queryId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["queryId", "authorId", "authorName", "authorRole", "message", "createdAt"]
+    },
+    "SocialHandle": {
+      "title": "SocialHandle",
+      "description": "Clinic portfolio social handle URLs and states.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "linkedin", "youtube", "whatsapp", "twitter", "link"] }
+      },
+      "required": ["id", "name", "url", "isActive", "platform"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Clinic offered healthcare services managed by clinic administrators.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "icon": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "showPrice": { "type": "boolean" },
+        "clinicSlug": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "description", "durationMinutes", "price", "clinicSlug"]
+    },
+    "Clinic": {
+      "title": "Clinic",
+      "description": "Multi-clinic configuration, feature toggles, and branch locations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "description": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "features": { "type": "object" },
+        "locations": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "slug", "name", "features", "locations"]
+    },
+    "MonthlyFinance": {
+      "title": "MonthlyFinance",
+      "description": "Monthly planned expense targets and revenue benchmarks set by Admin or Super Admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clinicSlug": { "type": "string" },
+        "year": { "type": "number" },
+        "month": { "type": "number" },
+        "monthKey": { "type": "string" },
+        "clinicRent": { "type": "number" },
+        "staffSalary": { "type": "number" },
+        "consumableItems": { "type": "number" },
+        "otherExpenses": { "type": "number" },
+        "totalBudgetedExpenses": { "type": "number" },
+        "otherRevenue": { "type": "number" },
+        "notes": { "type": "string" },
+        "setBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clinicSlug", "monthKey", "clinicRent", "staffSalary", "consumableItems", "otherExpenses"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Itemized clinic expense voucher or transaction record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clinicSlug": { "type": "string" },
+        "monthKey": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string", "enum": ["rent", "salary", "consumable", "other"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "vendor": { "type": "string" },
+        "paymentMode": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "paidStatus": { "type": "string", "enum": ["paid", "pending"] },
+        "notes": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clinicSlug", "monthKey", "title", "category", "amount", "date", "paidStatus"]
+    }
+  },
+  "firestore": {
+    "/clinics/{clinicId}": {
+      "schema": "Clinic",
+      "description": "Collection of clinics managed by developer and admin teams."
+    },
+    "/monthly_finances/{financeId}": {
+      "schema": "MonthlyFinance",
+      "description": "Monthly planned expense targets and revenue benchmarks set by Admin or Super Admin."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Itemized clinic expense voucher or transaction records."
+    },
+    "/settings/{settingId}": {
+      "schema": "object",
+      "description": "Dynamic configurations such as menu permissions and social handles."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles collection"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Scheduling and tracking appointments collection"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Patient testimonials collection"
+    },
+    "/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Log records for email notification reminders"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Treatment invoices collection for dental procedures"
+    },
+    "/surgeons/{surgeonId}": {
+      "schema": "Surgeon",
+      "description": "Custom panel of Board-Certified Surgeons managed by clinic admins/staff"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Healthcare services offered by clinic administrators"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Announcements published by clinic administrators."
+    },
+    "/support_queries/{queryId}": {
+      "schema": "SupportQuery",
+      "description": "User feedback and support queries."
+    },
+    "/support_queries/{queryId}/replies/{replyId}": {
+      "schema": "QueryReply",
+      "description": "Replies thread for support queries."
+    }
+  }
+}
