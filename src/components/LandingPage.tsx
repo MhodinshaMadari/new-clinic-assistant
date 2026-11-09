@@ -7,8 +7,7 @@ import { RevonLogo } from './RevonLogo';
 import { ZFCreationsBrand } from './ZFCreationsBrand';
 import { SocialHandle } from '../types';
 import { ClinicFacilitiesPortfolioSection } from './ClinicFacilitiesPortfolioSection';
-import { ClinicYouTubeVideoSection } from './ClinicYouTubeVideoSection';
-import { ClinicGoogleReviewsSection } from './ClinicGoogleReviewsSection';
+import { PortfolioSlideshow } from './PortfolioSlideshow';
 import { motion, AnimatePresence } from 'motion/react';
 // @ts-ignore
 import clinicReceptionImg from '../assets/images/clinic_reception_1784288696289.jpg';
@@ -417,13 +416,16 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {treatments
-            .filter((t) => t.isActive !== false)
-            .map((treatment) => (
+        <PortfolioSlideshow
+          items={treatments.filter((t) => t.isActive !== false)}
+          keyExtractor={(treatment) => treatment.id}
+          autoSlideIntervalMs={3000}
+          themeColor="blue"
+          itemLabelSingular="service"
+          itemLabelPlural="services"
+          renderItem={(treatment) => (
             <div 
-              key={treatment.id} 
-              className="bento-card p-6 flex flex-col justify-between space-y-6 bg-white dark:bg-slate-900"
+              className="bento-card p-6 flex flex-col justify-between space-y-6 bg-white dark:bg-slate-900 h-full border border-slate-200/80 dark:border-slate-800 shadow-xs hover:border-revon-blue/40 transition-all rounded-3xl"
             >
               <div className="space-y-4">
                 <div className="p-3 bg-revon-blue/10 dark:bg-teal-950/70 border border-transparent dark:border-teal-800/40 rounded-2xl inline-block">
@@ -442,8 +444,8 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                 )}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        />
       </section>
 
       {/* Specialists Section */}
@@ -512,18 +514,15 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
         <ClinicFacilitiesPortfolioSection clinic={activeClinic} />
       )}
 
-      {/* Clinic YouTube Video Showcase (Per Clinic) */}
-      <ClinicYouTubeVideoSection clinic={activeClinic} />
-
-      {/* Testimonials & Verified Google Reviews Showcase */}
+      {/* Patient Testimonials & Reviews Showcase */}
       <section className="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
           <div className="space-y-4 max-w-xl">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight sm:text-4xl font-display">
-              Real Stories & Google Reviews
+              Patient Testimonials & Reviews
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              See verified patient experiences, certified Google reviews, and real treatment feedback for {activeClinic?.name}.
+              Read real patient experiences and verified feedback from patients treated at {activeClinic?.name}.
             </p>
           </div>
           <div className="mt-4 md:mt-0">
@@ -627,14 +626,83 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
           </form>
         )}
 
-        {/* Integrated Clinic Google Reviews Showcase */}
+        {/* Patient Reviews Card Grid */}
         <div className="mt-8">
-          <ClinicGoogleReviewsSection
-            clinic={activeClinic}
-            clinicReviews={reviews || []}
-            onWriteReviewClick={() => setShowReviewForm(true)}
-            canWriteReview={user ? (!userProfile || userProfile.role === 'patient') : false}
-          />
+          {(() => {
+            const published = (reviews || []).filter(r => r.isPublished !== false);
+            if (published.length === 0) {
+              return (
+                <div className="text-center py-16 px-4 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-500 flex items-center justify-center">
+                    <Star className="h-6 w-6 fill-amber-400" />
+                  </div>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-base">No Patient Reviews Yet</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Be the first to share your dental experience at {activeClinic?.name}! Click "Write a Review" above to submit feedback.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {published.map((rev) => (
+                  <div
+                    key={rev.id}
+                    className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs">
+                            {rev.patientName ? rev.patientName.charAt(0).toUpperCase() : 'P'}
+                          </div>
+                          <div>
+                            <div className="font-bold text-sm text-slate-900 dark:text-white font-display">
+                              {rev.patientName || 'Verified Patient'}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono">
+                              {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recent visit'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex text-amber-400">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={`h-4 w-4 ${i < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {rev.treatmentName && (
+                        <span className="inline-block text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-800/60">
+                          {rev.treatmentName}
+                        </span>
+                      )}
+
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic">
+                        "{rev.comment}"
+                      </p>
+
+                      {rev.adminReply && (
+                        <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-3 border-l-3 border-teal-500 text-xs space-y-1">
+                          <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 uppercase font-mono block">
+                            Response from {rev.adminReplyBy || 'Clinical Team'}
+                          </span>
+                          <p className="text-slate-600 dark:text-slate-400 italic text-[11px]">
+                            "{rev.adminReply}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </section>
 

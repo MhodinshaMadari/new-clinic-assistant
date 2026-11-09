@@ -21,9 +21,6 @@ import { AppointmentCalendarView } from './AppointmentCalendarView';
 import { DentistSlotBreakdownView, STANDARD_TIME_SLOTS, isSlotBooked } from './DentistSlotBreakdownView';
 import { AdminFacilitiesManager } from './AdminFacilitiesManager';
 import { AdminReviewsManager } from './AdminReviewsManager';
-import { AdminGoogleReviewsManager } from './AdminGoogleReviewsManager';
-import { AdminYouTubeManager } from './AdminYouTubeManager';
-import { GoogleLogoIcon } from './ClinicGoogleReviewsSection';
 import { FinanceDashboard } from './FinanceDashboard';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
@@ -1161,12 +1158,15 @@ export function Dashboard({
   const [adminServicesPage, setAdminServicesPage] = useState(1);
   const [adminServicesPageSize, setAdminServicesPageSize] = useState(5);
 
-  // Controlled Accordion State for Admin Portal
-  const ALL_ADMIN_SECTIONS = ['clinic_uri', 'features', 'branding', 'facilities', 'google_reviews', 'youtube_media', 'reviews', 'permissions', 'social', 'users', 'surgeons', 'services'] as const;
+  // Sub-Tab Segregation & Controlled Accordion State for Admin Portal
+  type AdminCategoryTab = 'all' | 'clinic' | 'staff' | 'services' | 'reviews';
+
+  const ALL_ADMIN_SECTIONS = ['clinic_uri', 'features', 'branding', 'social', 'users', 'surgeons', 'permissions', 'facilities', 'services', 'reviews'] as const;
   type AdminSectionId = typeof ALL_ADMIN_SECTIONS[number];
 
+  const [activeAdminCategory, setActiveAdminCategory] = useState<AdminCategoryTab>('all');
   const [openAdminSections, setOpenAdminSections] = useState<AdminSectionId[]>([
-    'clinic_uri', 'features', 'branding', 'facilities', 'google_reviews', 'youtube_media', 'reviews', 'permissions', 'social', 'users', 'surgeons', 'services'
+    'clinic_uri', 'features', 'branding', 'social', 'users', 'surgeons', 'permissions', 'facilities', 'services', 'reviews'
   ]);
 
   const [featureUpdatingKey, setFeatureUpdatingKey] = useState<string | null>(null);
@@ -4377,75 +4377,63 @@ export function Dashboard({
                 </button>
               </div>
 
-              {/* Media & External Review URLs Quick Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Google Reviews Integration Card */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-blue-500/10 border border-blue-500/30 flex items-center justify-between gap-4">
-                  <div className="flex items-center space-x-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center shadow-md shrink-0 border border-slate-200/80 dark:border-slate-700">
-                      <GoogleLogoIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
-                        <span>Google Reviews & Profile URLs</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                        Configure "Write a Review" direct link, Google Maps location, & star rating.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!openAdminSections.includes('google_reviews')) {
-                        toggleAdminSection('google_reviews');
-                      }
-                      const el = document.getElementById('admin-section-google-reviews');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-1.5 shrink-0"
-                  >
-                    <span>Configure</span>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
+              {/* Admin Portal Sub-Tabs Segregation */}
+              <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  {[
+                    { id: 'all' as AdminCategoryTab, label: 'All Sections', icon: <Sliders className="w-4 h-4" />, count: isSuperAdmin ? 10 : 9 },
+                    { id: 'clinic' as AdminCategoryTab, label: 'Clinic & Branding', icon: <Building2 className="w-4 h-4" />, count: isSuperAdmin ? 4 : 3 },
+                    { id: 'staff' as AdminCategoryTab, label: 'Staff & Roles', icon: <Users className="w-4 h-4" />, count: 3 },
+                    { id: 'services' as AdminCategoryTab, label: 'Services & Facilities', icon: <Stethoscope className="w-4 h-4" />, count: 2 },
+                    { id: 'reviews' as AdminCategoryTab, label: 'Patient Reviews', icon: <Star className="w-4 h-4" />, count: 1 },
+                  ].map((tab) => {
+                    const isActive = activeAdminCategory === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveAdminCategory(tab.id)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                          isActive
+                            ? 'bg-revon-blue text-white shadow-sm'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200/70'
+                        }`}
+                      >
+                        {tab.icon}
+                        <span>{tab.label}</span>
+                        <span
+                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* YouTube Video Showcase Card */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-red-500/10 via-rose-500/5 to-red-500/10 border border-red-500/30 flex items-center justify-between gap-4">
-                  <div className="flex items-center space-x-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md shrink-0">
-                      <Youtube className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
-                        <span>YouTube Channel & Showcase</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                        Manage clinic channel link and embedded procedure / tour video library.
-                      </p>
-                    </div>
-                  </div>
-
+                <div className="flex items-center space-x-2 ml-auto">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!openAdminSections.includes('youtube_media')) {
-                        toggleAdminSection('youtube_media');
-                      }
-                      const el = document.getElementById('admin-section-youtube-media');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-1.5 shrink-0"
+                    onClick={expandAllAdminSections}
+                    className="text-[11px] font-bold text-slate-600 hover:text-revon-blue px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                   >
-                    <span>Configure</span>
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    Expand All
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={collapseAllAdminSections}
+                    className="text-[11px] font-bold text-slate-600 hover:text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Collapse All
                   </button>
                 </div>
               </div>
 
               {/* Accordion Item: Super Admin Clinic URI Management */}
-              {isSuperAdmin && (
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && isSuperAdmin && (
                 <div className="bg-white rounded-2xl border border-teal-200/80 overflow-hidden shadow-xs transition-all duration-200">
                   <button
                     type="button"
@@ -4548,7 +4536,8 @@ export function Dashboard({
               )}
 
               {/* Accordion Item 0: Clinic Modular Features & Capability Provisioning */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('features')}
@@ -4747,9 +4736,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Accordion Item 1: Clinic Logo & Invoice Branding */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('branding')}
@@ -5082,9 +5073,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
               
               {/* Accordion Item: Clinic Facilities & Patient Amenities Management */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'services') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('facilities')}
@@ -5137,86 +5130,14 @@ export function Dashboard({
                   </div>
                 )}
               </div>
-
-              {/* Accordion Item: Google Business Profile & Review URLs Integration */}
-              <div id="admin-section-google-reviews" className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
-                <button
-                  type="button"
-                  onClick={() => toggleAdminSection('google_reviews')}
-                  className="w-full text-left p-5 flex items-center justify-between bg-white hover:bg-slate-50/80 transition-colors cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <div className="p-2.5 bg-blue-50 dark:bg-slate-800 text-blue-600 rounded-xl border border-blue-100 flex-shrink-0">
-                      <GoogleLogoIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base font-display flex items-center gap-2">
-                        <span>Google Business Profile & Review URLs</span>
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Configure "Write a Review" direct URL, Google Maps location, star rating, and featured Google testimonials
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
-                    <span className="text-[10px] font-mono font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
-                      Google Reviews
-                    </span>
-                    <div className={`p-1.5 rounded-lg bg-slate-100 text-slate-500 transition-transform duration-300 ${openAdminSections.includes('google_reviews') ? 'rotate-180 bg-blue-100 text-blue-700' : ''}`}>
-                      <ChevronDown className="h-4 w-4" />
-                    </div>
-                  </div>
-                </button>
-
-                {openAdminSections.includes('google_reviews') && (
-                  <div className="p-6 border-t border-slate-100 bg-white animate-fadeIn">
-                    <AdminGoogleReviewsManager />
-                  </div>
-                )}
-              </div>
-
-              {/* Accordion Item: YouTube Channel & Video Showcase Manager */}
-              <div id="admin-section-youtube-media" className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
-                <button
-                  type="button"
-                  onClick={() => toggleAdminSection('youtube_media')}
-                  className="w-full text-left p-5 flex items-center justify-between bg-white hover:bg-slate-50/80 transition-colors cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-red-500/20"
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <div className="p-2.5 bg-red-50 text-red-600 rounded-xl border border-red-100 flex-shrink-0">
-                      <Youtube className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base font-display flex items-center gap-2">
-                        <span>YouTube Channel & Video Showcase Manager</span>
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Manage clinic YouTube channel link, video tours, surgical procedure walkthroughs, and patient stories
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
-                    <span className="text-[10px] font-mono font-bold px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-100">
-                      YouTube Media
-                    </span>
-                    <div className={`p-1.5 rounded-lg bg-slate-100 text-slate-500 transition-transform duration-300 ${openAdminSections.includes('youtube_media') ? 'rotate-180 bg-red-100 text-red-700' : ''}`}>
-                      <ChevronDown className="h-4 w-4" />
-                    </div>
-                  </div>
-                </button>
-
-                {openAdminSections.includes('youtube_media') && (
-                  <div className="p-6 border-t border-slate-100 bg-white animate-fadeIn">
-                    <AdminYouTubeManager />
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Accordion Item: Patient Reviews & Testimonials Moderation */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
-                <button
-                  type="button"
-                  onClick={() => toggleAdminSection('reviews')}
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'reviews') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+                  <button
+                    type="button"
+                    onClick={() => toggleAdminSection('reviews')}
                   className="w-full text-left p-5 flex items-center justify-between bg-white hover:bg-slate-50/80 transition-colors cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <div className="flex items-center space-x-3.5">
@@ -5248,9 +5169,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
               
               {/* Accordion Item 2: Clinic Menu & Staff Access Permissions */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('permissions')}
@@ -5449,9 +5372,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Accordion Item 3: Clinic Portfolio Footer Social Handles */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('social')}
@@ -5616,9 +5541,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Accordion Item 4: Clinic User Profiles Directory */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('users')}
@@ -5781,9 +5708,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Accordion Item 5: Meet Our Board-Certified Surgeons Panel */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('surgeons')}
@@ -5987,9 +5916,11 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Accordion Item 6: Offered Healthcare Services Management */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
+              {(activeAdminCategory === 'all' || activeAdminCategory === 'services') && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
                   onClick={() => toggleAdminSection('services')}
@@ -6186,6 +6117,7 @@ export function Dashboard({
                   </div>
                 )}
               </div>
+              )}
 
             </div>
           )}

@@ -13,6 +13,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PortfolioSlideshow } from './PortfolioSlideshow';
 
 interface ClinicFacilitiesPortfolioSectionProps {
   clinic?: Clinic;
@@ -172,62 +173,62 @@ export const ClinicFacilitiesPortfolioSection: React.FC<ClinicFacilitiesPortfoli
             </button>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredFacilities.map((facility, index) => {
-              return (
-                <motion.div
-                  key={facility.id || facility.name}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, delay: index * 0.04 }}
-                  className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-teal-500/40 dark:hover:border-teal-500/40 transition-all duration-300 flex flex-col justify-between group"
-                >
-                  <div className="space-y-4">
-                    {/* Top Row: Icon & Badge */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800/80 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300 shadow-2xs">
-                        <FacilityIcon iconName={facility.icon} className="w-6 h-6" />
-                      </div>
-
-                      {facility.badge && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700 font-mono">
-                          {facility.badge}
-                        </span>
-                      )}
+          <PortfolioSlideshow
+            items={filteredFacilities}
+            keyExtractor={(facility) => facility.id || facility.name}
+            autoSlideIntervalMs={3000}
+            themeColor="teal"
+            itemLabelSingular="facility"
+            itemLabelPlural="facilities"
+            renderItem={(facility) => (
+              <div
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-teal-500/40 dark:hover:border-teal-500/40 transition-all duration-300 flex flex-col justify-between group h-full"
+              >
+                <div className="space-y-4">
+                  {/* Top Row: Icon & Badge */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800/80 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300 shadow-2xs">
+                      <FacilityIcon iconName={facility.icon} className="w-6 h-6" />
                     </div>
 
-                    {/* Facility Name & Category */}
-                    <div className="space-y-1">
-                      <h3 className="font-extrabold text-slate-900 dark:text-white text-base group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
-                        {facility.name}
-                      </h3>
-                      {facility.category && (
-                        <span className="inline-block text-[11px] font-semibold text-teal-600 dark:text-teal-400 font-mono">
-                          {facility.category}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                      {facility.description}
-                    </p>
+                    {facility.badge && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700 font-mono">
+                        {facility.badge}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Bottom status badge */}
-                  <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Available On-Site</span>
-                    </span>
-                    <span className="text-slate-400 dark:text-slate-500 text-[10px] font-mono">
-                      Verified Facility
-                    </span>
+                  {/* Facility Name & Category */}
+                  <div className="space-y-1">
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-base group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                      {facility.name}
+                    </h3>
+                    {facility.category && (
+                      <span className="inline-block text-[11px] font-semibold text-teal-600 dark:text-teal-400 font-mono">
+                        {facility.category}
+                      </span>
+                    )}
                   </div>
-                </motion.div>
-              );
-            })}
-          </div>
+
+                  {/* Description */}
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {facility.description}
+                  </p>
+                </div>
+
+                {/* Bottom status badge */}
+                <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Available On-Site</span>
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500 text-[10px] font-mono">
+                    Verified Facility
+                  </span>
+                </div>
+              </div>
+            )}
+          />
         )}
 
         {/* Accessibility & Patient Safety Highlight Bar */}

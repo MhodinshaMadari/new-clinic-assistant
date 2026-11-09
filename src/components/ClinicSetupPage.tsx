@@ -25,26 +25,13 @@ import {
   AlertCircle,
   Upload,
   Image as ImageIcon,
-  RotateCcw,
-  Youtube,
-  Star,
   Sparkles,
   Copy,
   RefreshCw,
+  RotateCcw,
   Code,
   X
 } from 'lucide-react';
-import { GoogleLogoIcon } from './ClinicGoogleReviewsSection';
-import { 
-  getClinicGoogleConfig, 
-  getClinicYouTubeVideos, 
-  sanitizeClinicYouTubeVideos, 
-  DEFAULT_GOOGLE_BUSINESS_PROFILE_ID, 
-  DEFAULT_ELFSIGHT_APP_ID,
-  extractElfsightAppId,
-  buildGoogleReviewUrls,
-  extractGoogleBusinessProfileId
-} from '../data/clinicMediaData';
 
 interface ClinicSetupPageProps {
   clinicSlug: string;
@@ -53,7 +40,7 @@ interface ClinicSetupPageProps {
 }
 
 export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinicView }: ClinicSetupPageProps) {
-  const { clinics, updateClinic, fetchAndSyncGoogleReviews } = useClinic();
+  const { clinics, updateClinic } = useClinic();
   const { appointments } = useAppointments();
   const { userProfile, user } = useAuth();
   const isSuperAdmin = Boolean(
@@ -76,17 +63,6 @@ export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinic
   const [logoUrl, setLogoUrl] = useState(clinic?.logoUrl || '');
   const [lobbyImageUrl, setLobbyImageUrl] = useState(clinic?.lobbyImageUrl || '');
   const [treatmentRoomImageUrl, setTreatmentRoomImageUrl] = useState(clinic?.treatmentRoomImageUrl || '');
-  const [googleBusinessProfileId, setGoogleBusinessProfileId] = useState(clinic?.googleConfig?.businessProfileId || clinic?.googleConfig?.placeId || DEFAULT_GOOGLE_BUSINESS_PROFILE_ID);
-  const [googleWriteReviewUrl, setGoogleWriteReviewUrl] = useState(clinic?.googleConfig?.writeReviewUrl || '');
-  const [googleMapsUrl, setGoogleMapsUrl] = useState(clinic?.googleConfig?.googleMapsUrl || '');
-  const [embedWidgetUrl, setEmbedWidgetUrl] = useState(clinic?.googleConfig?.embedWidgetUrl || '');
-  const [elfsightAppId, setElfsightAppId] = useState(clinic?.googleConfig?.elfsightAppId || DEFAULT_ELFSIGHT_APP_ID);
-  const [googleRating, setGoogleRating] = useState<number>(clinic?.googleConfig?.rating || 4.9);
-  const [googleTotalReviews, setGoogleTotalReviews] = useState<number>(clinic?.googleConfig?.totalReviews || 180);
-  const [googleReviews, setGoogleReviews] = useState<any[]>(clinic?.googleConfig?.reviews || []);
-  const [isFetchingGoogle, setIsFetchingGoogle] = useState(false);
-  const [fetchGoogleMessage, setFetchGoogleMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [youtubeChannelUrl, setYoutubeChannelUrl] = useState(clinic?.youtubeChannelUrl || clinic?.socialHandles?.find(s => s.platform === 'youtube')?.url || '');
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -178,15 +154,6 @@ export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinic
       setLogoUrl(clinic.logoUrl || '');
       setLobbyImageUrl(clinic.lobbyImageUrl || '');
       setTreatmentRoomImageUrl(clinic.treatmentRoomImageUrl || '');
-      setGoogleBusinessProfileId(clinic.googleConfig?.businessProfileId || clinic.googleConfig?.placeId || DEFAULT_GOOGLE_BUSINESS_PROFILE_ID);
-      setGoogleWriteReviewUrl(clinic.googleConfig?.writeReviewUrl || '');
-      setGoogleMapsUrl(clinic.googleConfig?.googleMapsUrl || '');
-      setEmbedWidgetUrl(clinic.googleConfig?.embedWidgetUrl || '');
-      setElfsightAppId(clinic.googleConfig?.elfsightAppId || DEFAULT_ELFSIGHT_APP_ID);
-      setGoogleRating(clinic.googleConfig?.rating || 4.9);
-      setGoogleTotalReviews(clinic.googleConfig?.totalReviews || 180);
-      setGoogleReviews(clinic.googleConfig?.reviews || []);
-      setYoutubeChannelUrl(clinic.youtubeChannelUrl || clinic.socialHandles?.find(s => s.platform === 'youtube')?.url || '');
       setFeatures(clinic.features ? {
         appointments: clinic.features.appointments ?? true,
         billing: clinic.features.billing ?? true,
@@ -283,79 +250,12 @@ export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinic
     })));
   };
 
-  const handleFetchGoogleReviews = async (idToUse?: string) => {
-    const rawTarget = idToUse !== undefined ? idToUse : googleBusinessProfileId;
-    const targetId = extractGoogleBusinessProfileId(rawTarget || DEFAULT_GOOGLE_BUSINESS_PROFILE_ID);
-    if (!targetId) {
-      setFetchGoogleMessage({ type: 'error', text: 'Please enter a valid Google Business Profile ID, CID, or Maps URL.' });
-      return;
-    }
-
-    setIsFetchingGoogle(true);
-    setFetchGoogleMessage(null);
-    try {
-      const result = await fetchAndSyncGoogleReviews(clinic.id, targetId);
-      const generated = buildGoogleReviewUrls(targetId, name || clinic.name);
-
-      setGoogleBusinessProfileId(targetId);
-      setGoogleWriteReviewUrl(generated.writeReviewUrl);
-      setGoogleMapsUrl(generated.googleMapsUrl);
-      setGoogleReviews(result.reviews);
-      setGoogleRating(result.rating);
-      setGoogleTotalReviews(result.totalReviews);
-
-      setFetchGoogleMessage({
-        type: 'success',
-        text: `Successfully fetched and synchronized ${result.reviews.length} authentic Google reviews for Profile ID ${targetId}! (${result.rating}★ across ${result.totalReviews} total reviews)`
-      });
-      setTimeout(() => setFetchGoogleMessage(null), 6000);
-    } catch (err: any) {
-      console.error('Failed to fetch Google reviews:', err);
-      setFetchGoogleMessage({
-        type: 'error',
-        text: err.message || 'Failed to fetch reviews from Google Business Profile. Please check the ID or network connection.'
-      });
-    } finally {
-      setIsFetchingGoogle(false);
-    }
-  };
-
   const handleSaveSetup = async () => {
     setSaving(true);
     setSaveSuccess(false);
     setErrorMsg('');
 
     try {
-      const fallbackGoogle = getClinicGoogleConfig(clinic.slug, clinic.name);
-      const fallbackVideos = getClinicYouTubeVideos(clinic.slug, clinic.name);
-
-      const cleanProfileId = extractGoogleBusinessProfileId(googleBusinessProfileId || clinic.googleConfig?.businessProfileId || clinic.googleConfig?.placeId || DEFAULT_GOOGLE_BUSINESS_PROFILE_ID);
-      const urls = buildGoogleReviewUrls(cleanProfileId, name || clinic.name);
-
-      const existingReviews = (googleReviews && googleReviews.length > 0)
-        ? googleReviews
-        : (clinic.googleConfig?.reviews && clinic.googleConfig.reviews.length > 0)
-          ? clinic.googleConfig.reviews
-          : fallbackGoogle.reviews;
-
-      const updatedGoogleConfig = {
-        ...fallbackGoogle,
-        ...(clinic.googleConfig || {}),
-        businessProfileId: cleanProfileId,
-        placeId: cleanProfileId,
-        rating: googleRating || clinic.googleConfig?.rating || 4.9,
-        totalReviews: googleTotalReviews || clinic.googleConfig?.totalReviews || 180,
-        googleMapsUrl: googleMapsUrl.trim() || urls.googleMapsUrl,
-        writeReviewUrl: googleWriteReviewUrl.trim() || urls.writeReviewUrl,
-        embedWidgetUrl: embedWidgetUrl.trim(),
-        elfsightAppId: extractElfsightAppId(elfsightAppId) || DEFAULT_ELFSIGHT_APP_ID,
-        reviews: existingReviews
-      };
-
-      const existingVideos = (clinic.youtubeVideos && clinic.youtubeVideos.length > 0)
-        ? clinic.youtubeVideos
-        : fallbackVideos;
-
       await updateClinic(clinic.id, {
         name,
         tagline,
@@ -367,10 +267,7 @@ export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinic
         lobbyImageUrl,
         treatmentRoomImageUrl,
         features,
-        locations,
-        youtubeChannelUrl: youtubeChannelUrl.trim(),
-        youtubeVideos: sanitizeClinicYouTubeVideos(existingVideos),
-        googleConfig: updatedGoogleConfig
+        locations
       });
 
       setSaving(false);
@@ -732,271 +629,6 @@ export function ClinicSetupPage({ clinicSlug, onNavigateBack, onNavigateToClinic
                   onChange={(e) => setWebsite(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white"
                 />
-              </div>
-            </div>
-          </div>
-
-          {/* Google Reviews & YouTube Media Configuration Card */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                  <GoogleLogoIcon className="h-5 w-5" />
-                  <span>Google Reviews & YouTube Showcase</span>
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Fetch live reviews and configure direct links for your clinic's Google Business Profile and YouTube channel.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold font-mono">
-                  <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-                  <span>{googleRating}★ ({googleTotalReviews} Google Reviews)</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold">
-                  <span>{googleReviews.length} Synced Reviews</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Fetch Message Notification */}
-            {fetchGoogleMessage && (
-              <div className={`p-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold animate-fadeIn ${
-                fetchGoogleMessage.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                  : 'bg-red-50 dark:bg-red-950/70 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
-              }`}>
-                <div className="flex items-center space-x-2">
-                  {fetchGoogleMessage.type === 'success' ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-                  )}
-                  <span>{fetchGoogleMessage.text}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setFetchGoogleMessage(null)}
-                  className="opacity-70 hover:opacity-100 cursor-pointer p-0.5"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            <div className="space-y-4 text-xs">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <GoogleLogoIcon className="h-3.5 w-3.5" />
-                    <span>Google Business Profile ID / CID / Maps URL</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGoogleBusinessProfileId('1293814119993852207');
-                      const urls = buildGoogleReviewUrls('1293814119993852207', name || 'Clinic');
-                      setGoogleWriteReviewUrl(urls.writeReviewUrl);
-                      setGoogleMapsUrl(urls.googleMapsUrl);
-                    }}
-                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    <span>Use ID 1293814119993852207</span>
-                  </button>
-                </div>
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. 1293814119993852207 or maps link"
-                    value={googleBusinessProfileId}
-                    onChange={(e) => setGoogleBusinessProfileId(e.target.value)}
-                    className="flex-1 min-w-[200px] px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold dark:text-white font-mono text-[11px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleFetchGoogleReviews(googleBusinessProfileId)}
-                    disabled={isFetchingGoogle}
-                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50 shrink-0 shadow-xs"
-                    title="Fetch and synchronize customer reviews directly from Google"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isFetchingGoogle ? 'animate-spin' : ''}`} />
-                    <span>{isFetchingGoogle ? 'Fetching Reviews...' : 'Fetch Reviews from Google'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const clean = extractGoogleBusinessProfileId(googleBusinessProfileId || '1293814119993852207');
-                      const urls = buildGoogleReviewUrls(clean, name || 'Clinic');
-                      setGoogleBusinessProfileId(clean);
-                      setGoogleWriteReviewUrl(urls.writeReviewUrl);
-                      setGoogleMapsUrl(urls.googleMapsUrl);
-                    }}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-bold cursor-pointer transition-colors shrink-0"
-                  >
-                    Generate URLs
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                  Accepts a numeric Business Profile ID/CID, Place ID, or full Google Maps URL. <em>(Direct live extraction from Google requires a Google Cloud Places API key; without a key, tailored clinic reviews are generated).</em>
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <GoogleLogoIcon className="h-3.5 w-3.5" />
-                    <span>Google "Write a Review" Direct URL</span>
-                  </span>
-                  {googleWriteReviewUrl && (
-                    <a
-                      href={googleWriteReviewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <span>Test Link</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://g.page/r/your-clinic/review"
-                  value={googleWriteReviewUrl}
-                  onChange={(e) => setGoogleWriteReviewUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white font-mono text-[11px]"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Patients clicking "Write a Review" on your public page will be taken directly to this Google rating prompt.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                    <span>Google Maps Business Profile URL</span>
-                  </span>
-                  {googleMapsUrl && (
-                    <a
-                      href={googleMapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <span>View Map</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://maps.google.com/?cid=..."
-                  value={googleMapsUrl}
-                  onChange={(e) => setGoogleMapsUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white font-mono text-[11px]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <GoogleLogoIcon className="h-3.5 w-3.5" />
-                    <span>Elfsight Google Reviews App ID or Snippet *</span>
-                  </span>
-                  {elfsightAppId && (
-                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                      App ID: {extractElfsightAppId(elfsightAppId)}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  placeholder="9fd444a6-3e6e-4605-89b6-b141a3f5b4fa or paste full Elfsight div tag"
-                  value={elfsightAppId}
-                  onChange={(e) => setElfsightAppId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white font-mono text-[11px]"
-                />
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                  Default App ID: <code>{DEFAULT_ELFSIGHT_APP_ID}</code>. Renders verified Google Maps reviews from your official clinic profile in an interactive widget.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Code className="h-3.5 w-3.5 text-indigo-500" />
-                    <span>Live Google Review Embed Widget URL (Optional Fallback)</span>
-                  </span>
-                  {embedWidgetUrl && (
-                    <a
-                      href={embedWidgetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px]"
-                    >
-                      <span>Preview Widget</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </label>
-                <input
-                  type="url"
-                  placeholder="e.g. https://widget.elfsight.com/... or custom review widget URL"
-                  value={embedWidgetUrl}
-                  onChange={(e) => setEmbedWidgetUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white font-mono text-[11px]"
-                />
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                  Optional alternative iframe embed URL. Leave empty to use your Elfsight Google Reviews widget.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Youtube className="h-3.5 w-3.5 text-red-500" />
-                    <span>Official Clinic YouTube Channel URL</span>
-                  </span>
-                  {youtubeChannelUrl && (
-                    <a
-                      href={youtubeChannelUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-red-600 hover:underline flex items-center gap-1"
-                    >
-                      <span>Visit Channel</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://youtube.com/@YourClinicChannel"
-                  value={youtubeChannelUrl}
-                  onChange={(e) => setYoutubeChannelUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium dark:text-white font-mono text-[11px]"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Powers the "Subscribe" and "Visit Channel" buttons on your patient-facing video tour section.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                  <span>Detailed curation: Customize individual video thumbnails, titles, and verified Google review quotes in the </span>
-                  <strong className="text-slate-700 dark:text-slate-200">Admin Portal</strong>.
-                </div>
-                <button
-                  type="button"
-                  onClick={onNavigateBack}
-                  className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-bold text-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Open Admin Portal</span>
-                  <ExternalLink className="h-3 w-3" />
-                </button>
               </div>
             </div>
           </div>

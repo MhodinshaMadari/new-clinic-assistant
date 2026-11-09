@@ -157,6 +157,7 @@ export interface MonthlyFinance {
   consumableItems: number; // Dental consumables, supplies, kits
   otherExpenses: number; // Utilities, maintenance, sanitation, marketing, etc.
   totalBudgetedExpenses: number; // Sum of the 4 expense categories
+  voucherTargetAmount?: number; // Target monthly expense ceiling specifically for Itemized Expense Vouchers
   otherRevenue?: number; // Optional miscellaneous clinic earnings/rebates
   otherRevenueNotes?: string;
   notes?: string;
@@ -178,11 +179,15 @@ export interface Expense {
   paymentMode?: 'Bank Transfer' | 'UPI' | 'Cash' | 'Cheque' | 'Card' | 'Other';
   receiptNumber?: string;
   paidStatus: 'paid' | 'pending';
+  voucherType?: 'paid' | 'collected'; // 'paid' (expense outflow) | 'collected' (direct collection inflow)
   notes?: string;
   createdBy?: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export type ExpenseVoucher = Expense;
+export type VoucherType = 'paid' | 'collected';
 
 export interface InvoiceItem {
   id: string;

@@ -38,10 +38,13 @@ import {
   X, 
   ShieldCheck, 
   ArrowUpRight, 
+  ArrowDownLeft,
+  Wallet,
   FileSpreadsheet,
   PieChart as PieChartIcon,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Target
 } from 'lucide-react';
 import { PaginationControls } from './PaginationControls';
 
@@ -222,8 +225,34 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   // Additional miscellaneous revenue set by admin (e.g. lab rebates, camps)
   const additionalDirectRevenue = Number(currentMonthFinance?.otherRevenue) || 0;
 
+  // Itemized logged expense vouchers for selected month
+  const monthExpenseVouchers = useMemo(() => {
+    return expenses.filter((e) => {
+      const dateStr = e.date || e.createdAt || '';
+      return dateStr.startsWith(selectedMonthKey) || e.monthKey === selectedMonthKey;
+    });
+  }, [expenses, selectedMonthKey]);
+
+  // Split vouchers into Paid (outflows) and Collected (inflows)
+  const monthPaidVouchers = useMemo(() => {
+    return monthExpenseVouchers.filter((e) => (e.voucherType || 'paid') === 'paid');
+  }, [monthExpenseVouchers]);
+
+  const monthCollectedVouchers = useMemo(() => {
+    return monthExpenseVouchers.filter((e) => e.voucherType === 'collected');
+  }, [monthExpenseVouchers]);
+
+  const totalPaidVouchers = useMemo(() => {
+    return monthPaidVouchers.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [monthPaidVouchers]);
+
+  const totalCollectedVouchers = useMemo(() => {
+    return monthCollectedVouchers.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [monthCollectedVouchers]);
+
   // Total Gross Revenue / Earning for this month
-  const totalRevenue = collectedInvoicesRevenue + collectedBillsRevenue + additionalDirectRevenue;
+  // (Invoiced Treatment Collections + Bill Receipts + Direct Voucher Collections + Miscellaneous Direct Revenue)
+  const totalRevenue = collectedInvoicesRevenue + collectedBillsRevenue + additionalDirectRevenue + totalCollectedVouchers;
 
   // Monthly Expenses:
   // Admin budgeted / set figures
@@ -233,15 +262,10 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   const setOtherExpenses = Number(currentMonthFinance?.otherExpenses) || 0;
   const totalSetExpenses = setClinicRent + setStaffSalary + setConsumableItems + setOtherExpenses;
 
-  // Itemized logged expense vouchers for selected month
-  const monthExpenseVouchers = useMemo(() => {
-    return expenses.filter((e) => {
-      const dateStr = e.date || e.createdAt || '';
-      return dateStr.startsWith(selectedMonthKey) || e.monthKey === selectedMonthKey;
-    });
-  }, [expenses, selectedMonthKey]);
+  // Net voucher expense: Total Paid - Total Collected
+  const netVoucherExpense = totalPaidVouchers - totalCollectedVouchers;
 
-  // Category sums of logged vouchers
+  // Category sums of logged vouchers (summing outflows)
   const loggedCategoryTotals = useMemo(() => {
     const totals: Record<ExpenseCategory, number> = {
       rent: 0,
@@ -249,7 +273,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       consumable: 0,
       other: 0
     };
-    monthExpenseVouchers.forEach((e) => {
+    monthPaidVouchers.forEach((e) => {
       const cat = e.category || 'other';
       if (totals[cat] !== undefined) {
         totals[cat] += Number(e.amount) || 0;
@@ -258,7 +282,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       }
     });
     return totals;
-  }, [monthExpenseVouchers]);
+  }, [monthPaidVouchers]);
 
   const totalLoggedExpenses = 
     loggedCategoryTotals.rent + 
@@ -277,16 +301,28 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   const effectiveOther = setOtherExpenses > 0 ? setOtherExpenses : loggedCategoryTotals.other;
   const totalEffectiveExpenses = effectiveRent + effectiveSalary + effectiveConsumables + effectiveOther;
 
-  // Net Profit / Net Margin calculation
+  // Net Profit / Net Margin calculation (Net Revenue after removing all expenses)
   const netEarnings = totalRevenue - totalEffectiveExpenses;
   const profitMarginPercent = totalRevenue > 0 
     ? ((netEarnings / totalRevenue) * 100).toFixed(1) 
     : '0.0';
 
+  // Monthly Target calculations based on Net Revenue after removing all expenses
+  const monthVoucherTarget = Number(currentMonthFinance?.voucherTargetAmount) || Number(currentMonthFinance?.totalBudgetedExpenses) || 0;
+
+  // Progress against net revenue target
+  const targetAchievementPercent = monthVoucherTarget > 0 ? (netEarnings / monthVoucherTarget) * 100 : 0;
+  const isTargetAchieved = monthVoucherTarget > 0 && netEarnings >= monthVoucherTarget;
+  const remainingToTarget = monthVoucherTarget > 0 ? Math.max(0, monthVoucherTarget - netEarnings) : 0;
+  const surplusOverTarget = isTargetAchieved ? netEarnings - monthVoucherTarget : 0;
+
   // ---------------------------------------------------------------------------
   // Modals & Forms State
   // ---------------------------------------------------------------------------
   const [showSetBudgetModal, setShowSetBudgetModal] = useState<boolean>(false);
+  const [showSetTargetModal, setShowSetTargetModal] = useState<boolean>(false);
+  const [targetInput, setTargetInput] = useState<string>('');
+  const [savingTarget, setSavingTarget] = useState<boolean>(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState<boolean>(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [savingBudget, setSavingBudget] = useState<boolean>(false);
@@ -299,6 +335,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     staffSalary: '',
     consumableItems: '',
     otherExpenses: '',
+    voucherTargetAmount: '',
     otherRevenue: '',
     notes: ''
   });
@@ -311,6 +348,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         staffSalary: currentMonthFinance.staffSalary ? String(currentMonthFinance.staffSalary) : '',
         consumableItems: currentMonthFinance.consumableItems ? String(currentMonthFinance.consumableItems) : '',
         otherExpenses: currentMonthFinance.otherExpenses ? String(currentMonthFinance.otherExpenses) : '',
+        voucherTargetAmount: currentMonthFinance.voucherTargetAmount ? String(currentMonthFinance.voucherTargetAmount) : '',
         otherRevenue: currentMonthFinance.otherRevenue ? String(currentMonthFinance.otherRevenue) : '',
         notes: currentMonthFinance.notes || ''
       });
@@ -321,6 +359,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         staffSalary: '120000',
         consumableItems: '25000',
         otherExpenses: '15000',
+        voucherTargetAmount: '50000',
         otherRevenue: '',
         notes: ''
       });
@@ -337,6 +376,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     paymentMode: 'Bank Transfer' | 'UPI' | 'Cash' | 'Cheque' | 'Card' | 'Other';
     receiptNumber: string;
     paidStatus: 'paid' | 'pending';
+    voucherType: 'paid' | 'collected';
     notes: string;
   }>({
     title: '',
@@ -347,10 +387,12 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     paymentMode: 'Bank Transfer',
     receiptNumber: '',
     paidStatus: 'paid',
+    voucherType: 'paid',
     notes: ''
   });
 
   // Table filtering & pagination
+  const [expenseFilterType, setExpenseFilterType] = useState<'all' | 'paid' | 'collected'>('all');
   const [expenseFilterCategory, setExpenseFilterCategory] = useState<string>('all');
   const [expenseFilterStatus, setExpenseFilterStatus] = useState<string>('all');
   const [expenseSearchQuery, setExpenseSearchQuery] = useState<string>('');
@@ -360,6 +402,8 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   // Filtered expense vouchers
   const filteredExpenseVouchers = useMemo(() => {
     return monthExpenseVouchers.filter((e) => {
+      const vType = e.voucherType || 'paid';
+      const matchType = expenseFilterType === 'all' || vType === expenseFilterType;
       const matchCat = expenseFilterCategory === 'all' || e.category === expenseFilterCategory;
       const matchStatus = expenseFilterStatus === 'all' || e.paidStatus === expenseFilterStatus;
       const matchSearch = 
@@ -367,9 +411,9 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         e.title.toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
         (e.vendor && e.vendor.toLowerCase().includes(expenseSearchQuery.toLowerCase())) ||
         (e.receiptNumber && e.receiptNumber.toLowerCase().includes(expenseSearchQuery.toLowerCase()));
-      return matchCat && matchStatus && matchSearch;
+      return matchType && matchCat && matchStatus && matchSearch;
     });
-  }, [monthExpenseVouchers, expenseFilterCategory, expenseFilterStatus, expenseSearchQuery]);
+  }, [monthExpenseVouchers, expenseFilterType, expenseFilterCategory, expenseFilterStatus, expenseSearchQuery]);
 
   // ---------------------------------------------------------------------------
   // Month Navigation Handlers
@@ -419,6 +463,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       const consumables = Number(budgetForm.consumableItems) || 0;
       const other = Number(budgetForm.otherExpenses) || 0;
       const directRev = Number(budgetForm.otherRevenue) || 0;
+      const voucherTarget = Number(budgetForm.voucherTargetAmount) || 0;
       const totalBudget = rent + salary + consumables + other;
 
       const docId = `${clinicSlug}_${selectedYear}_${String(selectedMonth).padStart(2, '0')}`;
@@ -436,6 +481,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         consumableItems: consumables,
         otherExpenses: other,
         totalBudgetedExpenses: totalBudget,
+        voucherTargetAmount: voucherTarget,
         otherRevenue: directRev,
         notes: budgetForm.notes.trim(),
         setBy: userProfile?.displayName || userProfile?.email || 'Admin',
@@ -478,12 +524,83 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         staffSalary: String(prevData.staffSalary || 0),
         consumableItems: String(prevData.consumableItems || 0),
         otherExpenses: String(prevData.otherExpenses || 0),
+        voucherTargetAmount: String(prevData.voucherTargetAmount || 0),
         otherRevenue: String(prevData.otherRevenue || 0),
         notes: prevData.notes ? `Copied from ${prevData.monthLabel || prevKey}: ${prevData.notes}` : ''
       });
       alert(`Copied expense parameters from ${MONTH_NAMES[prevMonth - 1]} ${prevYear}! Review and click Save.`);
     } else {
       alert(`No saved budget found for ${MONTH_NAMES[prevMonth - 1]} ${prevYear} to copy from.`);
+    }
+  };
+
+  // Dedicated Target Handlers for Itemized Expense Vouchers
+  const handleOpenSetTarget = () => {
+    setTargetInput(monthVoucherTarget > 0 ? String(monthVoucherTarget) : '');
+    setShowSetTargetModal(true);
+  };
+
+  const handleSaveVoucherTarget = async (e?: React.FormEvent, customValue?: number) => {
+    if (e) e.preventDefault();
+    if (!isAdminOrSuperAdmin) {
+      alert('Unauthorized: Only an Admin or Super Admin can set monthly voucher targets.');
+      return;
+    }
+
+    setSavingTarget(true);
+    setStatusMessage(null);
+
+    try {
+      const val = customValue !== undefined ? customValue : Math.max(0, Number(targetInput) || 0);
+      const docId = `${clinicSlug}_${selectedYear}_${String(selectedMonth).padStart(2, '0')}`;
+      const docRef = doc(db, 'monthly_finances', docId);
+
+      await setDoc(
+        docRef,
+        {
+          id: docId,
+          clinicSlug,
+          year: selectedYear,
+          month: selectedMonth,
+          monthKey: selectedMonthKey,
+          monthLabel: selectedMonthLabel,
+          voucherTargetAmount: val,
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+
+      setStatusMessage({
+        type: 'success',
+        text: val > 0 
+          ? `Net revenue target of ₹${val.toLocaleString('en-IN')} set for ${selectedMonthLabel}!`
+          : `Net revenue target cleared for ${selectedMonthLabel}.`
+      });
+      setShowSetTargetModal(false);
+    } catch (err: any) {
+      console.error('Error saving voucher target:', err);
+      setStatusMessage({
+        type: 'error',
+        text: `Failed to save voucher target: ${err?.message || 'Unknown error'}`
+      });
+    } finally {
+      setSavingTarget(false);
+    }
+  };
+
+  const handleCopyTargetFromPreviousMonth = () => {
+    let prevYear = selectedYear;
+    let prevMonth = selectedMonth - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+    const prevData = monthlyFinances[prevKey];
+    if (prevData && prevData.voucherTargetAmount) {
+      setTargetInput(String(prevData.voucherTargetAmount));
+    } else {
+      alert(`No target found for ${MONTH_NAMES[prevMonth - 1]} ${prevYear} to copy from.`);
     }
   };
 
@@ -499,6 +616,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       paymentMode: 'Bank Transfer',
       receiptNumber: '',
       paidStatus: 'paid',
+      voucherType: 'paid',
       notes: ''
     });
     setShowAddExpenseModal(true);
@@ -515,6 +633,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       paymentMode: expense.paymentMode || 'Bank Transfer',
       receiptNumber: expense.receiptNumber || '',
       paidStatus: expense.paidStatus,
+      voucherType: expense.voucherType || 'paid',
       notes: expense.notes || ''
     });
     setShowAddExpenseModal(true);
@@ -523,12 +642,12 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdminOrSuperAdmin) {
-      alert('Unauthorized: Only an Admin or Super Admin can log expenses.');
+      alert('Unauthorized: Only an Admin or Super Admin can log vouchers.');
       return;
     }
 
     if (!expenseForm.title.trim() || !expenseForm.amount) {
-      alert('Please provide a title and amount for the expense.');
+      alert('Please provide a title and amount for the voucher.');
       return;
     }
 
@@ -549,6 +668,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
         paymentMode: expenseForm.paymentMode,
         receiptNumber: expenseForm.receiptNumber.trim(),
         paidStatus: expenseForm.paidStatus,
+        voucherType: expenseForm.voucherType || 'paid',
         notes: expenseForm.notes.trim(),
         createdBy: userProfile?.displayName || userProfile?.email || 'Admin',
         createdAt: editingExpense?.createdAt || new Date().toISOString(),
@@ -564,10 +684,28 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       setShowAddExpenseModal(false);
       setEditingExpense(null);
     } catch (err: any) {
-      console.error('Error saving expense voucher:', err);
-      alert(`Failed to save expense: ${err?.message || 'Unknown error'}`);
+      console.error('Error saving voucher:', err);
+      alert(`Failed to save voucher: ${err?.message || 'Unknown error'}`);
     } finally {
       setSavingExpense(false);
+    }
+  };
+
+  const handleToggleVoucherType = async (expense: Expense) => {
+    if (!isAdminOrSuperAdmin) return;
+    const currentType = expense.voucherType || 'paid';
+    const newType = currentType === 'paid' ? 'collected' : 'paid';
+    try {
+      await updateDoc(doc(db, 'expenses', expense.id), {
+        voucherType: newType,
+        updatedAt: new Date().toISOString()
+      });
+      setStatusMessage({
+        type: 'success',
+        text: `Voucher "${expense.title}" updated to ${newType === 'paid' ? 'Paid (Expense Outflow)' : 'Collected (Direct Inflow)'}.`
+      });
+    } catch (err: any) {
+      console.error('Failed to toggle voucher type:', err);
     }
   };
 
@@ -617,7 +755,16 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       const billRevenue = mBills.filter((b) => b.status === 'collected').reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
       const mFin = monthlyFinances[mKey];
       const mDirectRev = Number(mFin?.otherRevenue) || 0;
-      const mRev = invRevenue + billRevenue + mDirectRev;
+      // Itemized vouchers for that month (split into collected inflows and paid outflows)
+      const mVouchers = expenses.filter((e) => (e.date || e.createdAt || '').startsWith(mKey) || e.monthKey === mKey);
+      const mCollectedSum = mVouchers
+        .filter((e) => e.voucherType === 'collected')
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const mPaidSum = mVouchers
+        .filter((e) => (e.voucherType || 'paid') === 'paid')
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+      const mRev = invRevenue + billRevenue + mDirectRev + mCollectedSum;
 
       // Calculate expenses for that month
       const mRent = Number(mFin?.clinicRent) || 0;
@@ -626,11 +773,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       const mOth = Number(mFin?.otherExpenses) || 0;
       const mSetExp = mRent + mSal + mCons + mOth;
 
-      // Itemized sum
-      const mVouchers = expenses.filter((e) => (e.date || e.createdAt || '').startsWith(mKey) || e.monthKey === mKey);
-      const mVoucherSum = mVouchers.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-      const mExp = mSetExp > 0 ? mSetExp : mVoucherSum;
+      const mExp = mSetExp > 0 ? mSetExp : mPaidSum;
       const mProfit = mRev - mExp;
 
       list.push({
@@ -656,13 +799,14 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
 
   // Export CSV Handler
   const handleExportCSV = () => {
-    const headers = ['Date', 'Title', 'Category', 'Vendor', 'Amount (INR)', 'Payment Mode', 'Status', 'Receipt Number', 'Notes'];
+    const headers = ['Date', 'Type', 'Title', 'Category', 'Vendor / Payer', 'Amount (INR)', 'Payment Mode', 'Status', 'Receipt Number', 'Notes'];
     const rows = monthExpenseVouchers.map((e) => [
       `"${e.date || ''}"`,
+      `"${(e.voucherType || 'paid') === 'collected' ? 'Collected (Inflow)' : 'Paid (Outflow)'}"`,
       `"${(e.title || '').replace(/"/g, '""')}"`,
       `"${e.category}"`,
       `"${(e.vendor || '').replace(/"/g, '""')}"`,
-      e.amount || 0,
+      (e.voucherType === 'collected' ? (e.amount || 0) : -(e.amount || 0)),
       `"${e.paymentMode || ''}"`,
       `"${e.paidStatus}"`,
       `"${e.receiptNumber || ''}"`,
@@ -674,6 +818,10 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       [],
       ['MONTHLY FINANCIAL SUMMARY', selectedMonthLabel],
       ['Total Gross Revenue / Earnings', totalRevenue],
+      ['  - Invoiced Treatment Collections', collectedInvoicesRevenue],
+      ['  - Clinic Bills Collections', collectedBillsRevenue],
+      ['  - Collected Vouchers (Direct Inflows)', totalCollectedVouchers],
+      ['  - Miscellaneous Direct Revenue', additionalDirectRevenue],
       ['Total Monthly Expenses', totalEffectiveExpenses],
       ['  - Clinic Rent', effectiveRent],
       ['  - Staff Salary', effectiveSalary],
@@ -681,6 +829,11 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       ['  - Other Expenses', effectiveOther],
       ['Net Profit / Net Margin', netEarnings],
       ['Net Profit Margin %', `${profitMarginPercent}%`],
+      [],
+      ['ITEMIZED VOUCHERS SUMMARY', selectedMonthLabel],
+      ['Total Paid (Expense Outflows)', totalPaidVouchers],
+      ['Total Collected (Direct Inflows)', totalCollectedVouchers],
+      ['Net Voucher Expense (Paid - Collected)', netVoucherExpense],
       []
     ];
 
@@ -872,7 +1025,8 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
             <span className="text-slate-500 dark:text-slate-400">
-              {monthInvoices.filter(i => i.status === 'collected').length} invoices collected
+              {monthInvoices.filter(i => i.status === 'collected').length} invoices
+              {totalCollectedVouchers > 0 && ` + ₹${totalCollectedVouchers.toLocaleString('en-IN')} collected vouchers`}
             </span>
             {pendingInvoicedAmount > 0 && (
               <span className="text-amber-600 dark:text-amber-400 font-medium font-mono">
@@ -906,10 +1060,10 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
             <span className="text-slate-500 dark:text-slate-400">
-              {monthExpenseVouchers.length} vouchers logged
+              {monthPaidVouchers.length} paid vouchers
             </span>
             <span className="text-slate-400 font-mono">
-              ₹{totalLoggedExpenses.toLocaleString('en-IN')} logged
+              ₹{totalPaidVouchers.toLocaleString('en-IN')} paid
             </span>
           </div>
         </div>
@@ -1324,65 +1478,50 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       {/* 5. Itemized Expense Vouchers Table & Management */}
       {/* --------------------------------------------------------------------------- */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-        {/* Table Header & Search/Filters */}
+        {/* Section Header */}
         <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h3 className="font-bold text-slate-900 dark:text-white text-base font-display flex items-center space-x-2">
               <FileSpreadsheet className="h-4 w-4 text-revon-blue" />
-              <span>Itemized Expense Vouchers ({selectedMonthLabel})</span>
+              <span>Itemized Expense & Collection Vouchers ({selectedMonthLabel})</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Specific bills, supplier invoices, payroll stubs, and rent vouchers logged for accounting.
+              Log both clinic expense disbursements (paid) and direct patient or client fee receipts (collected).
             </p>
           </div>
 
-          {/* Search and Filters */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            {/* Search Box */}
-            <div className="relative flex-1 sm:w-56">
-              <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={expenseSearchQuery}
-                onChange={(e) => {
-                  setExpenseSearchQuery(e.target.value);
-                  setExpensePage(1);
-                }}
-                placeholder="Search vendor, title..."
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-revon-blue/20 text-slate-800 dark:text-slate-200"
-              />
-            </div>
-
-            {/* Category Filter */}
-            <select
-              value={expenseFilterCategory}
-              onChange={(e) => {
-                setExpenseFilterCategory(e.target.value);
-                setExpensePage(1);
-              }}
-              className="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
+          <div className="flex items-center space-x-2">
+            {isAdminOrSuperAdmin && (
+              <button
+                onClick={handleOpenSetTarget}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs border ${
+                  monthVoucherTarget > 0
+                    ? isTargetAchieved
+                      ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 dark:hover:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      : netEarnings >= 0
+                      ? 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                      : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/70 dark:hover:bg-rose-900/70 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+                title={`Configure monthly net revenue target for ${selectedMonthLabel}`}
+              >
+                <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  {monthVoucherTarget > 0 
+                    ? `Net Target: ₹${monthVoucherTarget.toLocaleString('en-IN')}` 
+                    : 'Set Net Target'}
+                </span>
+                <Edit3 className="h-3 w-3 opacity-60 ml-0.5" />
+              </button>
+            )}
+            <button
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer"
+              title="Export Vouchers CSV"
             >
-              <option value="all">All Categories</option>
-              <option value="rent">Clinic Rent</option>
-              <option value="salary">Staff Salary</option>
-              <option value="consumable">Consumable Items</option>
-              <option value="other">Other Expenses</option>
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={expenseFilterStatus}
-              onChange={(e) => {
-                setExpenseFilterStatus(e.target.value);
-                setExpensePage(1);
-              }}
-              className="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
-            >
-              <option value="all">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-            </select>
-
+              <Download className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
+            </button>
             {isAdminOrSuperAdmin && (
               <button
                 onClick={handleOpenAddExpense}
@@ -1395,16 +1534,316 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
           </div>
         </div>
 
+        {/* 4-KPI Summary Ribbon: Monthly Target, Total Gross, Total Expenses, Net Revenue */}
+        <div className="p-4 bg-slate-50/70 dark:bg-slate-850/50 border-b border-slate-100 dark:border-slate-800 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* 1. Monthly Net Revenue Target */}
+            <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-indigo-100 dark:border-indigo-950 shadow-2xs relative overflow-hidden group">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium flex items-center space-x-1.5">
+                  <span className="p-1 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                    <Target className="h-3.5 w-3.5" />
+                  </span>
+                  <span>Net Revenue Target</span>
+                </span>
+                <div className="flex items-center space-x-1">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                    monthVoucherTarget > 0
+                      ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {monthVoucherTarget > 0 ? 'Active Target' : 'Not Set'}
+                  </span>
+                  {isAdminOrSuperAdmin && (
+                    <button
+                      onClick={handleOpenSetTarget}
+                      className="text-slate-400 hover:text-indigo-600 p-0.5 rounded cursor-pointer"
+                      title="Edit target"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 text-lg sm:text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400">
+                {monthVoucherTarget > 0 ? `₹${monthVoucherTarget.toLocaleString('en-IN')}` : '₹0'}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5 flex items-center justify-between">
+                <span>Net revenue goal after all expenses</span>
+                {isAdminOrSuperAdmin && monthVoucherTarget === 0 && (
+                  <button
+                    onClick={handleOpenSetTarget}
+                    className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+                  >
+                    + Set Target
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Total Gross Earnings (Inflows) */}
+            <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-emerald-100 dark:border-emerald-950 shadow-2xs">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium flex items-center space-x-1.5">
+                  <span className="p-1 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                    <ArrowDownLeft className="h-3.5 w-3.5" />
+                  </span>
+                  <span>Total Gross Earnings</span>
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-mono">
+                  {monthCollectedVouchers.length > 0 ? `${monthCollectedVouchers.length} vouchers + rev` : 'All collections'}
+                </span>
+              </div>
+              <div className="mt-2 text-lg sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                ₹{totalRevenue.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Treatments, bills & collected vouchers
+              </div>
+            </div>
+
+            {/* 3. Total Clinic Expenses (Outflows) */}
+            <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-rose-100 dark:border-rose-950 shadow-2xs">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium flex items-center space-x-1.5">
+                  <span className="p-1 rounded-md bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </span>
+                  <span>Total Clinic Expenses</span>
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono">
+                  {monthPaidVouchers.length} paid vouchers
+                </span>
+              </div>
+              <div className="mt-2 text-lg sm:text-xl font-bold font-mono text-rose-600 dark:text-rose-400">
+                ₹{totalEffectiveExpenses.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Rent, salaries & paid vouchers
+              </div>
+            </div>
+
+            {/* 4. Net Revenue (After All Expenses) */}
+            <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium flex items-center space-x-1.5">
+                  <span className="p-1 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                    <Wallet className="h-3.5 w-3.5" />
+                  </span>
+                  <span>Net Revenue (Profit)</span>
+                </span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                  monthVoucherTarget > 0
+                    ? isTargetAchieved
+                      ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                      : netEarnings >= 0
+                      ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                      : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                    : netEarnings >= 0
+                    ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                }`}>
+                  {monthVoucherTarget > 0
+                    ? isTargetAchieved
+                      ? 'Target Achieved'
+                      : netEarnings >= 0
+                      ? `${targetAchievementPercent.toFixed(1)}% of Target`
+                      : 'Net Deficit'
+                    : netEarnings >= 0
+                    ? `${profitMarginPercent}% Margin`
+                    : 'Operating Deficit'}
+                </span>
+              </div>
+              <div className={`mt-2 text-lg sm:text-xl font-bold font-mono ${
+                netEarnings >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+              }`}>
+                ₹{netEarnings.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {monthVoucherTarget > 0 ? (
+                  isTargetAchieved ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                      +₹{surplusOverTarget.toLocaleString('en-IN')} surplus over target
+                    </span>
+                  ) : netEarnings >= 0 ? (
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                      ₹{remainingToTarget.toLocaleString('en-IN')} remaining to reach target
+                    </span>
+                  ) : (
+                    <span className="text-rose-600 dark:text-rose-400 font-medium">
+                      ₹{Math.abs(netEarnings).toLocaleString('en-IN')} deficit below zero
+                    </span>
+                  )
+                ) : (
+                  'Gross Revenue − Total Expenses'
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Budget Health & Target Progress Bar */}
+          {monthVoucherTarget > 0 ? (
+            <div className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 mb-1.5">
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1">
+                    <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Target Tracking ({selectedMonthLabel}):</span>
+                  </span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    ₹{netEarnings.toLocaleString('en-IN')} / ₹{monthVoucherTarget.toLocaleString('en-IN')} ({targetAchievementPercent.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {isTargetAchieved ? (
+                    <span className="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/70 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Target achieved! (+₹{surplusOverTarget.toLocaleString('en-IN')} surplus)</span>
+                    </span>
+                  ) : netEarnings >= 0 ? (
+                    <span className="inline-flex items-center space-x-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/70 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-900">
+                      <Target className="h-3 w-3" />
+                      <span>₹{remainingToTarget.toLocaleString('en-IN')} needed to reach target</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center space-x-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/70 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-900">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>Net deficit: -₹{Math.abs(netEarnings).toLocaleString('en-IN')}</span>
+                    </span>
+                  )}
+                  {isAdminOrSuperAdmin && (
+                    <button
+                      onClick={handleOpenSetTarget}
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                    >
+                      Adjust Target
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Visual Progress Bar */}
+              <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    netEarnings < 0
+                      ? 'bg-rose-500'
+                      : isTargetAchieved
+                      ? 'bg-emerald-500'
+                      : targetAchievementPercent >= 75
+                      ? 'bg-indigo-500'
+                      : 'bg-amber-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(0, targetAchievementPercent))}%` }}
+                />
+              </div>
+
+              {/* Comprehensive Net Revenue Breakdown */}
+              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-1">
+                <span>
+                  <strong>Net Revenue Tracking:</strong> Total Gross Revenue (₹{totalRevenue.toLocaleString('en-IN')})
+                  {' − '}Total Expenses (₹{totalEffectiveExpenses.toLocaleString('en-IN')})
+                  {' = '}
+                  <strong className={netEarnings >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                    ₹{netEarnings.toLocaleString('en-IN')} Net Revenue
+                  </strong>
+                  {` (${profitMarginPercent}% margin) tracked towards ₹${monthVoucherTarget.toLocaleString('en-IN')} target.`}
+                </span>
+                <span className="font-mono text-[10px] text-slate-400">
+                  (Inflows: ₹{totalRevenue.toLocaleString('en-IN')} · Outflows: ₹{totalEffectiveExpenses.toLocaleString('en-IN')})
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-300">
+                <Target className="h-4 w-4 text-indigo-600 shrink-0" />
+                <span>No net revenue target is currently configured for <strong>{selectedMonthLabel}</strong>. Set a monthly net earnings goal after all expenses to track clinic financial milestones.</span>
+              </div>
+              {isAdminOrSuperAdmin && (
+                <button
+                  onClick={handleOpenSetTarget}
+                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                >
+                  + Set Target Amount
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Search and Filters Bar */}
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2 bg-white dark:bg-slate-900">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={expenseSearchQuery}
+              onChange={(e) => {
+                setExpenseSearchQuery(e.target.value);
+                setExpensePage(1);
+              }}
+              placeholder="Search vendor, patient, title, receipt..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-revon-blue/20 text-slate-800 dark:text-slate-200"
+            />
+          </div>
+
+          {/* Type Filter (All, Paid, Collected) */}
+          <select
+            value={expenseFilterType}
+            onChange={(e) => {
+              setExpenseFilterType(e.target.value as any);
+              setExpensePage(1);
+            }}
+            className="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
+          >
+            <option value="all">All Types (Paid & Collected)</option>
+            <option value="paid">💸 Paid Outflows Only</option>
+            <option value="collected">📥 Direct Collections Only</option>
+          </select>
+
+          {/* Category Filter */}
+          <select
+            value={expenseFilterCategory}
+            onChange={(e) => {
+              setExpenseFilterCategory(e.target.value);
+              setExpensePage(1);
+            }}
+            className="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
+          >
+            <option value="all">All Categories</option>
+            <option value="rent">Clinic Rent</option>
+            <option value="salary">Staff Salary</option>
+            <option value="consumable">Consumable Items</option>
+            <option value="other">Other Expenses / Collections</option>
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={expenseFilterStatus}
+            onChange={(e) => {
+              setExpenseFilterStatus(e.target.value);
+              setExpensePage(1);
+            }}
+            className="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300 font-medium focus:outline-none"
+          >
+            <option value="all">All Status</option>
+            <option value="paid">Paid / Collected</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+
         {/* Table Content */}
         {loadingExpenses ? (
           <div className="py-20 text-center text-slate-400">
             <RefreshCw className="h-6 w-6 mx-auto animate-spin text-revon-blue mb-2" />
-            <span className="text-xs">Loading expense records...</span>
+            <span className="text-xs">Loading voucher records...</span>
           </div>
         ) : filteredExpenseVouchers.length === 0 ? (
           <div className="py-16 text-center text-slate-400 space-y-3">
             <p className="text-xs">
-              No itemized expense vouchers found for {selectedMonthLabel}
+              No {expenseFilterType === 'paid' ? 'paid outflow' : expenseFilterType === 'collected' ? 'direct collection' : ''} vouchers found for {selectedMonthLabel}
               {expenseFilterCategory !== 'all' ? ` in "${expenseFilterCategory}"` : ''}.
             </p>
             {isAdminOrSuperAdmin && (
@@ -1412,7 +1851,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                 onClick={handleOpenAddExpense}
                 className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl cursor-pointer"
               >
-                + Log First Expense Voucher for {selectedMonthLabel}
+                + Log First Voucher for {selectedMonthLabel}
               </button>
             )}
           </div>
@@ -1423,9 +1862,10 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                 <thead>
                   <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 font-mono">
                     <th className="p-4">Date</th>
+                    <th className="p-4">Type</th>
                     <th className="p-4">Title & Details</th>
                     <th className="p-4">Category</th>
-                    <th className="p-4">Vendor / Payee</th>
+                    <th className="p-4">Vendor / Payer</th>
                     <th className="p-4">Payment Mode</th>
                     <th className="p-4">Amount</th>
                     <th className="p-4">Status</th>
@@ -1439,6 +1879,31 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                       <tr key={exp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                         <td className="p-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           {exp.date}
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleVoucherType(exp)}
+                            disabled={!isAdminOrSuperAdmin}
+                            className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border transition-all ${
+                              (exp.voucherType || 'paid') === 'collected'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                            } ${isAdminOrSuperAdmin ? 'hover:scale-105 cursor-pointer' : ''}`}
+                            title={isAdminOrSuperAdmin ? 'Click to toggle Paid/Collected' : undefined}
+                          >
+                            {(exp.voucherType || 'paid') === 'collected' ? (
+                              <>
+                                <ArrowDownLeft className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>Collected</span>
+                              </>
+                            ) : (
+                              <>
+                                <ArrowUpRight className="h-3 w-3 text-rose-600 dark:text-rose-400" />
+                                <span>Paid</span>
+                              </>
+                            )}
+                          </button>
                         </td>
                         <td className="p-4">
                           <div className="font-bold text-slate-900 dark:text-white">{exp.title}</div>
@@ -1462,7 +1927,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                             {exp.category === 'rent' && 'Clinic Rent'}
                             {exp.category === 'salary' && 'Staff Salary'}
                             {exp.category === 'consumable' && 'Consumables'}
-                            {exp.category === 'other' && 'Other Expense'}
+                            {exp.category === 'other' && (exp.voucherType === 'collected' ? 'Direct Collection' : 'Other Expense')}
                           </span>
                         </td>
                         <td className="p-4 text-slate-600 dark:text-slate-300 font-medium">
@@ -1471,8 +1936,16 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                         <td className="p-4 font-mono text-slate-500 dark:text-slate-400">
                           {exp.paymentMode || 'Bank Transfer'}
                         </td>
-                        <td className="p-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                          ₹{exp.amount.toLocaleString('en-IN')}
+                        <td className="p-4 font-mono font-bold whitespace-nowrap">
+                          {(exp.voucherType || 'paid') === 'collected' ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              +₹{exp.amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-900 dark:text-white">
+                              -₹{exp.amount.toLocaleString('en-IN')}
+                            </span>
+                          )}
                         </td>
                         <td className="p-4 whitespace-nowrap">
                           <button
@@ -1485,7 +1958,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                             }`}
                             title={isAdminOrSuperAdmin ? 'Click to toggle Paid/Pending' : undefined}
                           >
-                            {exp.paidStatus === 'paid' ? 'Paid' : 'Pending'}
+                            {exp.paidStatus === 'paid' ? 'Completed' : 'Pending'}
                           </button>
                         </td>
                         {isAdminOrSuperAdmin && (
@@ -1670,6 +2143,29 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                 </span>
               </div>
 
+              {/* Itemized Expense Vouchers Target Ceiling */}
+              <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 rounded-xl">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center space-x-1.5">
+                  <Target className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Monthly Net Revenue Target (₹)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400 text-xs">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={budgetForm.voucherTargetAmount}
+                    onChange={(e) => setBudgetForm({ ...budgetForm, voucherTargetAmount: e.target.value })}
+                    placeholder="e.g. 150000"
+                    className="w-full pl-7 pr-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Target net earnings milestone after deducting all clinic operating expenses for {selectedMonthLabel}.
+                </span>
+              </div>
+
               {/* Additional Miscellaneous Revenue (Optional) */}
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -1724,6 +2220,153 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       )}
 
       {/* --------------------------------------------------------------------------- */}
+      {/* 6B. MODAL: Set Monthly Net Revenue Target (Admin / Super Admin) */}
+      {/* --------------------------------------------------------------------------- */}
+      {showSetTargetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden animate-scaleUp">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/50">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                  <Target className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base font-display">
+                    Monthly Net Revenue Target
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Net revenue milestone after all expenses for <span className="font-bold text-slate-800 dark:text-slate-200">{selectedMonthLabel}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSetTargetModal(false)}
+                className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => handleSaveVoucherTarget(e)} className="p-6 space-y-4 text-xs">
+              {/* Context Summary for this month */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Gross Revenue</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">
+                    ₹{totalRevenue.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Total Expenses</span>
+                  <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+                    -₹{totalEffectiveExpenses.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Net Revenue</span>
+                  <span className={`font-mono font-bold text-xs ${netEarnings >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    ₹{netEarnings.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Target Amount Input */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center space-x-1">
+                  <span>Net Revenue Target for {selectedMonthLabel} (₹)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400 text-sm">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    required
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    placeholder="e.g. 150000"
+                    className="w-full pl-8 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-sm focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Sets the net earnings target milestone (Total Gross Revenue minus All Operating Expenses) for {selectedMonthLabel}.
+                </span>
+              </div>
+
+              {/* Quick Presets */}
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1.5 text-[11px]">
+                  Quick Target Presets:
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[25000, 50000, 75000, 100000, 125000, 150000, 200000, 250000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setTargetInput(String(preset))}
+                      className={`py-1 px-1.5 text-[11px] font-mono font-medium rounded-lg border text-center transition-colors cursor-pointer ${
+                        Number(targetInput) === preset
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                      }`}
+                    >
+                      ₹{preset >= 100000 ? `${(preset / 100000).toFixed(preset % 100000 === 0 ? 0 : 1)}L` : `${preset / 1000}k`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Copy & Clear Actions */}
+              <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleCopyTargetFromPreviousMonth}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 cursor-pointer font-medium"
+                >
+                  <Copy className="h-3 w-3" />
+                  <span>Copy from Last Month</span>
+                </button>
+                {monthVoucherTarget > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveVoucherTarget(undefined, 0)}
+                    disabled={savingTarget}
+                    className="text-xs text-rose-500 hover:underline cursor-pointer font-medium"
+                  >
+                    Clear Target
+                  </button>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSetTargetModal(false)}
+                  disabled={savingTarget}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTarget}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {savingTarget ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  <span>{savingTarget ? 'Saving...' : 'Save Target'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --------------------------------------------------------------------------- */}
       {/* 7. MODAL: Add / Edit Itemized Expense Voucher */}
       {/* --------------------------------------------------------------------------- */}
       {showAddExpenseModal && (
@@ -1731,15 +2374,29 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden animate-scaleUp">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/50">
               <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-revon-blue/10 dark:bg-cyan-950 text-revon-blue dark:text-cyan-400 rounded-xl">
-                  <Plus className="h-5 w-5" />
+                <div className={`p-2 rounded-xl ${
+                  expenseForm.voucherType === 'collected'
+                    ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
+                }`}>
+                  {expenseForm.voucherType === 'collected' ? (
+                    <ArrowDownLeft className="h-5 w-5" />
+                  ) : (
+                    <ArrowUpRight className="h-5 w-5" />
+                  )}
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-base font-display">
-                    {editingExpense ? 'Edit Expense Voucher' : 'Log New Expense Voucher'}
+                    {editingExpense 
+                      ? 'Edit Voucher' 
+                      : (expenseForm.voucherType === 'collected' 
+                          ? 'Log Direct Collection Voucher' 
+                          : 'Log Expense Outflow Voucher')}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Record supplier bills, rent receipts, payroll stubs, or consumables
+                    {expenseForm.voucherType === 'collected'
+                      ? 'Record payment collected directly from patients or clients on-site'
+                      : 'Record supplier bills, clinic rent, payroll stubs, or consumables'}
                   </p>
                 </div>
               </div>
@@ -1752,17 +2409,59 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
             </div>
 
             <form onSubmit={handleSaveExpense} className="p-6 space-y-4 text-xs">
+              {/* Voucher Type Toggle: Paid vs Collected */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 text-xs">
+                  Voucher Nature / Flow *
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setExpenseForm({ ...expenseForm, voucherType: 'paid' })}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                      expenseForm.voucherType === 'paid'
+                        ? 'bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    <span>Paid (Expense Outflow)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpenseForm({ ...expenseForm, voucherType: 'collected' })}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                      expenseForm.voucherType === 'collected'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <ArrowDownLeft className="h-3.5 w-3.5" />
+                    <span>Collected (Direct Inflow)</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {expenseForm.voucherType === 'paid'
+                    ? '💸 Outflow: Clinic expenses like facility rent, consumables, lab dues, or staff pay.'
+                    : '📥 Inflow: Payment collected directly from patients/clients on-site (cash, UPI, card, advance deposit).'}
+                </p>
+              </div>
+
               {/* Title */}
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Expense Description / Title *
+                  {expenseForm.voucherType === 'collected' ? 'Collection Title / Service *' : 'Expense Description / Title *'}
                 </label>
                 <input
                   type="text"
                   required
                   value={expenseForm.title}
                   onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
-                  placeholder="e.g. Monthly Clinic Lease - Indiranagar Flagship"
+                  placeholder={
+                    expenseForm.voucherType === 'collected'
+                      ? 'e.g. Treatment Advance / Direct Fee - Patient Anita Rao'
+                      : 'e.g. Monthly Clinic Lease - Indiranagar Flagship'
+                  }
                   className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white"
                 />
               </div>
@@ -1771,17 +2470,28 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Expense Category *
+                    Category *
                   </label>
                   <select
                     value={expenseForm.category}
                     onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as ExpenseCategory })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white font-medium"
                   >
-                    <option value="rent">Clinic Rent</option>
-                    <option value="salary">Staff Salary</option>
-                    <option value="consumable">Consumable Items</option>
-                    <option value="other">Other Expenses</option>
+                    {expenseForm.voucherType === 'collected' ? (
+                      <>
+                        <option value="other">Direct Patient Collection</option>
+                        <option value="consumable">Consumable Product Sale / Resale</option>
+                        <option value="rent">Facility Rental Income / Reimbursement</option>
+                        <option value="salary">Staff Advance Recovery</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="rent">Clinic Rent</option>
+                        <option value="salary">Staff Salary</option>
+                        <option value="consumable">Consumable Items</option>
+                        <option value="other">Other Expenses</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -1802,11 +2512,11 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                 </div>
               </div>
 
-              {/* Date & Vendor */}
+              {/* Date & Vendor / Payer */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Expense Date *
+                    Voucher Date *
                   </label>
                   <input
                     type="date"
@@ -1819,13 +2529,17 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
 
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Vendor / Payee
+                    {expenseForm.voucherType === 'collected' ? 'Patient / Client / Payer' : 'Vendor / Supplier / Payee'}
                   </label>
                   <input
                     type="text"
                     value={expenseForm.vendor}
                     onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })}
-                    placeholder="e.g. Dentsply Sirona / Landlord"
+                    placeholder={
+                      expenseForm.voucherType === 'collected'
+                        ? 'e.g. Anita Rao / Walk-in Patient'
+                        : 'e.g. Dentsply Sirona / Landlord'
+                    }
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white"
                   />
                 </div>
@@ -1842,38 +2556,38 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                     onChange={(e) => setExpenseForm({ ...expenseForm, paymentMode: e.target.value as any })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white"
                   >
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="UPI">UPI</option>
-                    <option value="Cheque">Cheque</option>
                     <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
                     <option value="Card">Card</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cheque">Cheque</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Status
+                    Status
                   </label>
                   <select
                     value={expenseForm.paidStatus}
                     onChange={(e) => setExpenseForm({ ...expenseForm, paidStatus: e.target.value as any })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white"
                   >
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
+                    <option value="paid">{expenseForm.voucherType === 'collected' ? 'Collected / Received' : 'Paid'}</option>
+                    <option value="pending">{expenseForm.voucherType === 'collected' ? 'Pending Collection' : 'Pending'}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Receipt / Bill Ref
+                    Receipt / Ref Number
                   </label>
                   <input
                     type="text"
                     value={expenseForm.receiptNumber}
                     onChange={(e) => setExpenseForm({ ...expenseForm, receiptNumber: e.target.value })}
-                    placeholder="e.g. INV-8492"
+                    placeholder={expenseForm.voucherType === 'collected' ? 'e.g. RCPT-2041' : 'e.g. VOUCH-8492'}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white font-mono"
                   />
                 </div>
@@ -1888,7 +2602,11 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                   rows={2}
                   value={expenseForm.notes}
                   onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
-                  placeholder="Optional details regarding item batch, warranty, or purpose."
+                  placeholder={
+                    expenseForm.voucherType === 'collected'
+                      ? 'Optional details regarding patient treatment, package balance, or payment transaction ID.'
+                      : 'Optional details regarding item batch, warranty, or purpose.'
+                  }
                   className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-revon-blue/20 text-slate-900 dark:text-white"
                 />
               </div>
@@ -1905,10 +2623,22 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
                 <button
                   type="submit"
                   disabled={savingExpense}
-                  className="px-5 py-2 bg-revon-blue hover:bg-blue-700 text-white rounded-xl font-bold shadow-sm flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className={`px-5 py-2 text-white rounded-xl font-bold shadow-sm flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 ${
+                    expenseForm.voucherType === 'collected'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-revon-blue hover:bg-blue-700'
+                  }`}
                 >
                   <Save className="h-4 w-4" />
-                  <span>{savingExpense ? 'Saving...' : editingExpense ? 'Update Expense' : 'Save Voucher'}</span>
+                  <span>
+                    {savingExpense
+                      ? 'Saving...'
+                      : editingExpense
+                      ? 'Update Voucher'
+                      : expenseForm.voucherType === 'collected'
+                      ? 'Save Collected Voucher'
+                      : 'Save Paid Voucher'}
+                  </span>
                 </button>
               </div>
             </form>

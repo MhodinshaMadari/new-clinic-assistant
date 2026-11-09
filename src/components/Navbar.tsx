@@ -3,9 +3,10 @@ import { APP_NAME } from '../config/appConfig';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useClinic } from '../context/ClinicContext';
-import { LogIn, LogOut, User, Calendar, Menu, X, LayoutDashboard, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, PartyPopper, Activity, TrendingUp, Star, Youtube } from 'lucide-react';
+import { LogIn, LogOut, User, Calendar, Menu, X, LayoutDashboard, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, PartyPopper, Activity, TrendingUp, Star } from 'lucide-react';
 import { RevonLogo } from './RevonLogo';
 import { FestivalDecorModal } from './FestivalDecorModal';
+import { FestivalLogoWrapper, FestivalTitleCompanion, FestivalNavbarBorder } from './FestivalHeaderDecor';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ClinicNotification } from '../types';
@@ -159,12 +160,15 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
             <button 
               id="brand-logo-btn"
               onClick={() => handleNav(user ? 'dashboard' : (currentView === 'clinic-search' ? 'clinic-search' : 'portfolio'))}
-              className="flex items-center gap-2.5 cursor-pointer focus:outline-none"
+              className="flex items-center gap-2.5 cursor-pointer focus:outline-none relative group"
             >
-              <RevonLogo size={38} customSrc={currentView === 'clinic-search' ? undefined : activeClinic?.logoUrl} />
+              <FestivalLogoWrapper>
+                <RevonLogo size={38} customSrc={currentView === 'clinic-search' ? undefined : activeClinic?.logoUrl} />
+              </FestivalLogoWrapper>
               <div className="text-left">
-                <span className="font-black text-sm sm:text-base text-slate-800 dark:text-slate-100 tracking-tight block hover:text-revon-blue dark:hover:text-revon-teal transition-colors">
-                  {currentView === 'clinic-search' ? APP_NAME : (activeClinic?.name || APP_NAME)}
+                <span className="font-black text-sm sm:text-base text-slate-800 dark:text-slate-100 tracking-tight flex items-center hover:text-revon-blue dark:hover:text-revon-teal transition-colors">
+                  <span>{currentView === 'clinic-search' ? APP_NAME : (activeClinic?.name || APP_NAME)}</span>
+                  <FestivalTitleCompanion />
                 </span>
                 <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold uppercase tracking-widest block -mt-0.5">
                   {currentView === 'clinic-search' ? 'Clinic Directory' : `/${activeClinic?.slug || 'revon-dental'}`}
@@ -185,30 +189,6 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
                 >
                   Clinic Portfolio
                 </button>
-              )}
-              {currentView === 'portfolio' && (
-                <>
-                  <button
-                    onClick={() => {
-                      const el = document.getElementById('clinic-videos-section');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer flex items-center space-x-1.5"
-                  >
-                    <Youtube className="h-3.5 w-3.5 text-red-500" />
-                    <span>Videos</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const el = document.getElementById('clinic-reviews-section');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center space-x-1.5"
-                  >
-                    <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-                    <span>Google Reviews</span>
-                  </button>
-                </>
               )}
               {user && (
                 <button
@@ -708,6 +688,9 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
         isOpen={showFestivalModal} 
         onClose={() => setShowFestivalModal(false)} 
       />
+
+      {/* Decorative Festival Bottom Border */}
+      <FestivalNavbarBorder />
     </nav>
   );
 }

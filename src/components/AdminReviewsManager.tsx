@@ -24,8 +24,6 @@ import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { Review } from '../types';
 import { PaginationControls } from './PaginationControls';
-import { AdminGoogleReviewsManager } from './AdminGoogleReviewsManager';
-import { GoogleLogoIcon } from './ClinicGoogleReviewsSection';
 
 interface AdminReviewsManagerProps {
   onTriggerConfirm?: (
@@ -81,9 +79,6 @@ export function AdminReviewsManager({ onTriggerConfirm }: AdminReviewsManagerPro
   const [replyAuthor, setReplyAuthor] = useState(userProfile?.displayName || 'Clinical Director');
   const [replySaving, setReplySaving] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
-
-  // Google Reviews Config Drawer State
-  const [showGoogleConfig, setShowGoogleConfig] = useState(false);
 
   // Feedback banner
   const [bannerMessage, setBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -346,43 +341,12 @@ export function AdminReviewsManager({ onTriggerConfirm }: AdminReviewsManagerPro
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
-            type="button"
-            onClick={() => setShowGoogleConfig(!showGoogleConfig)}
-            className="flex items-center space-x-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-xl text-xs font-bold text-blue-900 dark:text-blue-300 shadow-xs cursor-pointer transition-all"
-          >
-            <GoogleLogoIcon className="h-4 w-4" />
-            <span>{showGoogleConfig ? 'Hide Google Reviews Settings' : 'Configure Google Review URLs'}</span>
-          </button>
-
-          <div className="hidden sm:flex items-center space-x-2 bg-amber-50 border border-amber-200/80 px-4 py-2 rounded-xl text-xs font-semibold text-amber-900 shadow-xs">
+          <div className="flex items-center space-x-2 bg-amber-50 border border-amber-200/80 px-4 py-2 rounded-xl text-xs font-semibold text-amber-900 shadow-xs">
             <ShieldCheck className="h-4 w-4 text-amber-600 flex-shrink-0" />
             <span>Patient-Authored Only • Admin Moderation Panel</span>
           </div>
         </div>
       </div>
-
-      {/* Google Reviews Integration Section Drawer */}
-      {showGoogleConfig && (
-        <div className="p-6 bg-slate-50/70 dark:bg-slate-900/70 rounded-3xl border border-blue-200 dark:border-blue-900 shadow-sm animate-fadeIn">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center space-x-2">
-              <GoogleLogoIcon className="h-5 w-5" />
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white font-display">
-                Google Business Profile & External Reviews Configuration
-              </h4>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowGoogleConfig(false)}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold cursor-pointer"
-            >
-              Close Drawer ✕
-            </button>
-          </div>
-          <AdminGoogleReviewsManager />
-        </div>
-      )}
 
       {/* Analytics Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">

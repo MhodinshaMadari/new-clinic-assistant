@@ -6,5 +6,7 @@
   "firestoreDatabaseId": "ai-studio-dentalclinicsche-a8e7add1-2304-43a4-bdbd-fb178b060b74",
   "storageBucket": "gpslocationfortravellers.firebasestorage.app",
   "messagingSenderId": "636698830604",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "636698830604-s836c7butfbgc6jmm7jthrc3srn5lhvr.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

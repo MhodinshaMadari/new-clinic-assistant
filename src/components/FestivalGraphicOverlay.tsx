@@ -1,25 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFestival } from '../context/FestivalContext';
-import { Sparkles, X, Eye, EyeOff, Moon, Sun, Gift, Heart, Volume2, Share2, Copy, Check, Calendar } from 'lucide-react';
+import { Sparkles, X, Moon, Sun, Gift, Heart, Volume2, Share2, Copy, Check, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface Particle {
-  id: number;
-  x: number;
-  y: number;
-  size: number;
-  speed: number;
-  opacity: number;
-  rotation: number;
-  rotationSpeed: number;
-  symbol?: string;
-  color?: string;
-}
 
 export function FestivalGraphicOverlay() {
   const { festivalConfig } = useFestival();
   const [userDismissedBanner, setUserDismissedBanner] = useState(false);
-  const [particlesHidden, setParticlesHidden] = useState(false);
   const [showGreetingModal, setShowGreetingModal] = useState(false);
   const [copiedGreeting, setCopiedGreeting] = useState(false);
 
@@ -28,7 +14,7 @@ export function FestivalGraphicOverlay() {
     setUserDismissedBanner(false);
   }, [festivalConfig.festivalType, festivalConfig.bannerMessage]);
 
-  const { enabled, festivalType, bannerMessage, particleType, particleIntensity, showGarland, showBanner, primaryColor, title } = festivalConfig;
+  const { enabled, festivalType, bannerMessage, showGarland, showBanner, primaryColor, title } = festivalConfig;
 
   // Copy greeting to clipboard
   const handleCopyGreeting = () => {
@@ -37,69 +23,6 @@ export function FestivalGraphicOverlay() {
     setCopiedGreeting(true);
     setTimeout(() => setCopiedGreeting(false), 2500);
   };
-
-  // Generate dynamic particles based on particleType & intensity
-  const particleCount = useMemo(() => {
-    if (particleIntensity === 'low') return 18;
-    if (particleIntensity === 'high') return 50;
-    return 30; // medium
-  }, [particleIntensity]);
-
-  const particleSymbols = useMemo(() => {
-    switch (particleType) {
-      case 'moons':
-        return ['🌙', '✨', '⭐', '🌟', '🌙', '💫', '🕌'];
-      case 'diyas':
-        return ['🪔', '✨', '🌟', '🕯️', '🪔', '💥', '💛'];
-      case 'snow':
-        return ['❄️', '❅', '❆', '✨', '❄️', '⚪'];
-      case 'confetti':
-        return ['🎉', '✨', '🎨', '🎊', '⭐', '💖', '💛'];
-      case 'fireworks':
-        return ['🎆', '🎇', '✨', '💥', '🥂', '🍾', '⭐'];
-      case 'stars':
-        return ['✨', '⭐', '🌟', '💫', '✦', '✧'];
-      case 'flowers':
-        return ['🌸', '🌺', '🌼', '✨', '🌷', '🏵️'];
-      default:
-        return ['✨', '⭐', '🌟'];
-    }
-  }, [particleType]);
-
-  const colors = useMemo(() => {
-    switch (festivalType) {
-      case 'eid':
-        return ['#10b981', '#34d399', '#f59e0b', '#fbbf24', '#60a5fa'];
-      case 'diwali':
-        return ['#f59e0b', '#fbbf24', '#ef4444', '#f97316', '#eab308'];
-      case 'christmas':
-        return ['#ef4444', '#10b981', '#38bdf8', '#f87171', '#fbbf24'];
-      case 'holi':
-        return ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
-      case 'newyear':
-        return ['#0284c7', '#38bdf8', '#f59e0b', '#e0e7ff', '#fbbf24'];
-      case 'independence':
-        return ['#f97316', '#ffffff', '#10b981', '#1e40af'];
-      default:
-        return [primaryColor || '#0d9488', '#f59e0b', '#38bdf8'];
-    }
-  }, [festivalType, primaryColor]);
-
-  const particles: Particle[] = useMemo(() => {
-    if (!enabled) return [];
-    return Array.from({ length: particleCount }).map((_, i) => ({
-      id: i,
-      x: Math.random() * 100, // %
-      y: Math.random() * 100, // %
-      size: Math.random() * 14 + 10, // px
-      speed: Math.random() * 15 + 10, // animation duration seconds
-      opacity: Math.random() * 0.7 + 0.2,
-      rotation: Math.random() * 360,
-      rotationSpeed: (Math.random() - 0.5) * 40,
-      symbol: particleSymbols[i % particleSymbols.length],
-      color: colors[i % colors.length]
-    }));
-  }, [enabled, particleCount, particleSymbols, colors]);
 
   if (!enabled) return null;
 
@@ -378,58 +301,8 @@ export function FestivalGraphicOverlay() {
       )}
 
       {/* ========================================================= */}
-      {/* 4. PARTICLE OVERLAY CANVAS ANIMATION */}
+      {/* 4. INTERACTIVE FESTIVE GREETING CARD MODAL */}
       {/* ========================================================= */}
-      {!particlesHidden && (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden z-30">
-          {particles.map((p) => (
-            <motion.div
-              key={p.id}
-              initial={{
-                x: `${p.x}vw`,
-                y: `-5vh`,
-                opacity: 0,
-                rotate: p.rotation
-              }}
-              animate={{
-                y: [`-5vh`, `105vh`],
-                opacity: [0, p.opacity, p.opacity, 0],
-                rotate: p.rotation + 360,
-                x: [`${p.x}vw`, `${p.x + (p.id % 2 === 0 ? 5 : -5)}vw`, `${p.x}vw`]
-              }}
-              transition={{
-                duration: p.speed,
-                repeat: Infinity,
-                ease: 'linear',
-                delay: (p.id % 5) * 1.5
-              }}
-              style={{
-                position: 'absolute',
-                fontSize: `${p.size}px`,
-                color: p.color,
-                filter: festivalType === 'diwali' ? 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.6))' : 'drop-shadow(0 0 4px rgba(255, 255, 255, 0.4))'
-              }}
-            >
-              {p.symbol}
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {/* ========================================================= */}
-      {/* 5. FLOATING TOGGLE FOR PARTICLES */}
-      {/* ========================================================= */}
-      <div className="fixed bottom-4 left-4 z-50 pointer-events-auto hidden sm:block">
-        <button
-          type="button"
-          onClick={() => setParticlesHidden(!particlesHidden)}
-          className="px-2.5 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-slate-300 hover:text-white text-[10px] font-bold font-mono border border-slate-700/80 shadow-lg backdrop-blur-md cursor-pointer flex items-center space-x-1.5 transition-all"
-          title={particlesHidden ? "Show Festival Particles" : "Hide Festival Particles"}
-        >
-          {particlesHidden ? <Eye className="h-3 w-3 text-emerald-400" /> : <EyeOff className="h-3 w-3 text-amber-400" />}
-          <span>{particlesHidden ? "Show Festivities" : "Hide Festivities"}</span>
-        </button>
-      </div>
 
       {/* ========================================================= */}
       {/* 6. INTERACTIVE FESTIVE GREETING CARD MODAL */}

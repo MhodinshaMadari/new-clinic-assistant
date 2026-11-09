@@ -91,3 +91,18 @@ html.dark .bento-card:hover {
   animation: shimmer 3s infinite;
 }
 
+@keyframes flicker {
+  0% { transform: scale(1) rotate(-1deg); opacity: 0.95; }
+  25% { transform: scale(1.08, 0.92) rotate(2deg); opacity: 1; }
+  50% { transform: scale(0.96, 1.05) rotate(-2deg); opacity: 0.88; }
+  75% { transform: scale(1.04, 0.98) rotate(1deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 0.96; }
+}
+
+@keyframes pulseGlow {
+  0% { opacity: 0.45; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 0.45; transform: scale(0.9); }
+}
+
+

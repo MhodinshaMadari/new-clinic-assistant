@@ -21,6 +21,15 @@ import {
   Globe
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { RevonLogo } from './RevonLogo';
+import { 
+  SantaHatOverlay, 
+  DiyaLogoAccent, 
+  EidCrescentAccent, 
+  HoliSplashAccent, 
+  NewYearHatAccent, 
+  TricolorBadgeAccent 
+} from './FestivalHeaderDecor';
 
 interface FestivalDecorModalProps {
   isOpen: boolean;
@@ -140,7 +149,7 @@ export function FestivalDecorModal({ isOpen, onClose }: FestivalDecorModalProps)
                 )}
               </label>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                When turned on, festive graphic overlays, falling particles, and top garlands appear for all visitors.
+                When turned on, header lights, logo ornaments (Santa cap, flickering diya, crescent), and greeting banners appear across the clinic.
               </p>
             </div>
 
@@ -157,6 +166,56 @@ export function FestivalDecorModal({ isOpen, onClose }: FestivalDecorModalProps)
                 }`}
               />
             </button>
+          </div>
+
+          {/* LIVE PREVIEW OF HEADER ORNAMENT & LIGHTS */}
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-700/80 text-white space-y-2.5">
+            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+              <span className="flex items-center gap-1.5 font-bold text-amber-400">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Live Header & Logo Preview</span>
+              </span>
+              <span className="text-[10px] uppercase font-bold text-slate-400">
+                {formData.enabled ? 'Decor Active' : 'Decor Inactive'}
+              </span>
+            </div>
+
+            {/* Mock Header Navigation Snippet */}
+            <div className="bg-slate-950 rounded-xl p-3 border border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative inline-flex items-center justify-center">
+                  {formData.festivalType === 'christmas' && <SantaHatOverlay />}
+                  {formData.festivalType === 'diwali' && <DiyaLogoAccent />}
+                  {formData.festivalType === 'eid' && <EidCrescentAccent />}
+                  {formData.festivalType === 'holi' && <HoliSplashAccent />}
+                  {formData.festivalType === 'newyear' && <NewYearHatAccent />}
+                  {formData.festivalType === 'independence' && <TricolorBadgeAccent />}
+                  <RevonLogo size={36} />
+                </div>
+                <div>
+                  <div className="font-black text-sm text-white flex items-center">
+                    <span>Revon Healthcare</span>
+                    {formData.festivalType === 'christmas' && <span className="ml-1 text-xs">❄️✨</span>}
+                    {formData.festivalType === 'diwali' && <span className="ml-1 text-xs animate-pulse">🪔✨</span>}
+                    {formData.festivalType === 'eid' && <span className="ml-1 text-xs text-amber-400">🌙✨</span>}
+                    {formData.festivalType === 'holi' && <span className="ml-1 text-xs">🎨✨</span>}
+                    {formData.festivalType === 'newyear' && <span className="ml-1 text-xs">🎆✨</span>}
+                    {formData.festivalType === 'independence' && <span className="ml-1 text-xs">🇮🇳</span>}
+                  </div>
+                  <span className="text-[10px] text-teal-400 font-bold uppercase tracking-widest block">/revon-dental</span>
+                </div>
+              </div>
+
+              <div className="text-right text-[11px] text-slate-400 font-mono hidden sm:block">
+                {formData.festivalType === 'christmas' && '🎅 Santa Cap on Logo + Holiday Border'}
+                {formData.festivalType === 'diwali' && '🪔 Flickering Diya + Fairy Lights Border'}
+                {formData.festivalType === 'eid' && '🌙 Crescent Moon + Golden Star Border'}
+                {formData.festivalType === 'holi' && '🎨 Gulal Color Splash + Rainbow Ribbon'}
+                {formData.festivalType === 'newyear' && '🎆 Celebration Hat + Starburst Border'}
+                {formData.festivalType === 'independence' && '🇮🇳 Tricolor Badge + Tricolor Border'}
+                {formData.festivalType === 'custom' && '✨ Golden Sparkle Crown + Ambient Glow'}
+              </div>
+            </div>
           </div>
 
           {/* FESTIVAL PRESETS SELECTOR */}
@@ -297,21 +356,17 @@ export function FestivalDecorModal({ isOpen, onClose }: FestivalDecorModalProps)
 
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Particle Graphic Effect Type
+                Active Logo Ornament & Border Theme
               </label>
-              <select
-                value={formData.particleType}
-                onChange={(e) => setFormData({ ...formData, particleType: e.target.value as ParticleType })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                <option value="moons">Crescent Moons & Stars (Eid)</option>
-                <option value="diyas">Illuminated Diyas & Sparkles (Diwali)</option>
-                <option value="snow">Falling Snowflakes (Christmas)</option>
-                <option value="confetti">Vibrant Color Confetti (Holi / Parties)</option>
-                <option value="fireworks">Fireworks & Sparklers (New Year)</option>
-                <option value="stars">Golden Stars & Sparkles</option>
-                <option value="flowers">Spring Floral Petals</option>
-              </select>
+              <div className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 font-medium">
+                {formData.festivalType === 'christmas' && '🎅 Santa Cap on Logo + Holiday Border'}
+                {formData.festivalType === 'diwali' && '🪔 Flickering Diya + Fairy Lights Border'}
+                {formData.festivalType === 'eid' && '🌙 Crescent Moon + Golden Star Border'}
+                {formData.festivalType === 'holi' && '🎨 Gulal Color Splash + Rainbow Ribbon'}
+                {formData.festivalType === 'newyear' && '🎆 Celebration Hat + Starburst Border'}
+                {formData.festivalType === 'independence' && '🇮🇳 Tricolor Badge + Tricolor Border'}
+                {formData.festivalType === 'custom' && '✨ Golden Sparkle Crown + Ambient Glow'}
+              </div>
             </div>
           </div>
 
@@ -333,16 +388,16 @@ export function FestivalDecorModal({ isOpen, onClose }: FestivalDecorModalProps)
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Particle Density
+                Animation & Glow Intensity
               </label>
               <select
                 value={formData.particleIntensity}
                 onChange={(e) => setFormData({ ...formData, particleIntensity: e.target.value as ParticleIntensity })}
                 className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
               >
-                <option value="low">Subtle (Low)</option>
-                <option value="medium">Standard (Medium)</option>
-                <option value="high">Festive Burst (High)</option>
+                <option value="low">Subtle (Gentle Glow)</option>
+                <option value="medium">Standard (Vibrant Flicker)</option>
+                <option value="high">High Festive Pulsing</option>
               </select>
             </div>
 

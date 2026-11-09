@@ -8,15 +8,12 @@ import {
   ShieldCheck,
   Send,
   XCircle,
-  Filter,
-  ExternalLink
+  Filter
 } from 'lucide-react';
 import { useClinicData } from '../hooks/useClinicData';
 import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { PaginationControls } from './PaginationControls';
-import { getClinicGoogleConfig } from '../data/clinicMediaData';
-import { GoogleLogoIcon } from './ClinicGoogleReviewsSection';
 
 export function PatientReviewsView() {
   const { userProfile } = useAuth();
@@ -153,63 +150,6 @@ export function PatientReviewsView() {
           </button>
         </div>
       </div>
-
-      {/* Clinic Google Rating & Reviews Banner */}
-      {(() => {
-        const googleConfig = (activeClinic?.googleConfig && activeClinic.googleConfig.reviews.length > 0)
-          ? activeClinic.googleConfig
-          : getClinicGoogleConfig(activeClinic?.slug, activeClinic?.name);
-        return (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-                <GoogleLogoIcon className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white font-display">
-                    {googleConfig.rating.toFixed(1)}
-                  </span>
-                  <div className="flex text-amber-400">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
-                  <span className="text-xs font-bold text-slate-500 font-mono">
-                    ({googleConfig.totalReviews}+ Verified Google Reviews)
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  Official Google Business Rating for <strong className="text-slate-800 dark:text-slate-200">{activeClinic?.name}</strong>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3 w-full md:w-auto">
-              <a
-                href={googleConfig.writeReviewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 md:flex-initial inline-flex items-center justify-center space-x-1.5 bg-slate-900 hover:bg-black text-white dark:bg-white dark:hover:bg-slate-100 dark:text-slate-900 px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer"
-              >
-                <GoogleLogoIcon className="h-4 w-4" />
-                <span>Write Google Review</span>
-                <ExternalLink className="h-3 w-3 opacity-80" />
-              </a>
-
-              <a
-                href={googleConfig.googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center space-x-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
-              >
-                <span>View on Maps</span>
-                <ExternalLink className="h-3 w-3 text-slate-400" />
-              </a>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Filter Toolbar */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">

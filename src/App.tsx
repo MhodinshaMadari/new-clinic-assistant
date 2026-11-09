@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ClinicProvider, useClinic } from './context/ClinicContext';
 import { FestivalProvider } from './context/FestivalContext';
 import { FestivalGraphicOverlay } from './components/FestivalGraphicOverlay';
+import { FestivalPageFrame } from './components/FestivalHeaderDecor';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { Dashboard } from './components/Dashboard';
@@ -283,7 +284,8 @@ function MainApp() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100 transition-colors duration-200 relative">
+      <FestivalPageFrame />
       <Navbar onNavigate={handleNavigate} currentView={currentView} />
       
       {/* Super Admin Top Notice Banner when viewing a disabled clinic */}
