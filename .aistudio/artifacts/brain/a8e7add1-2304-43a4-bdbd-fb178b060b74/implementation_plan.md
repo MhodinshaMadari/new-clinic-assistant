@@ -1,111 +1,152 @@
-# Full Four-Border Festival Frame & Garland Graphics
+# Clinic Assistant Feature Suite: Post-Op Care Dispatcher & Live Clinic/Doctor Availability
 
-Expand the festival décor system so that all four borders of the page (top, bottom, left, and right) feature matching animated festive light strings, garlands, and corner ornaments that scroll naturally with the page content.
-
----
+Empowering the clinic assistant, front-desk reception, and clinical team with high-impact daily operational tools: procedure-tailored Post-Op Care Instructions with instant WhatsApp dispatch, and a real-time Clinic Open/Closed and Doctor Availability management console displayed directly on the Clinic Portfolio.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following requirements have been confirmed based on user feedback:
-> - **All Four Screen Edges**: The festival graphics will frame the entire page across all four borders:
->   - **Top Border**: Full-width festival light garland / header border.
->   - **Left Border**: Vertical matching fairy light string and garland down the left edge.
->   - **Right Border**: Vertical matching fairy light string and garland down the right edge.
->   - **Bottom Border**: Full-width festival light string and garland along the page bottom.
->   - **4 Corner Accents**: Ornate decorative corner junctions (flickering clay diyas for Diwali, holly wreaths for Christmas, crescents for Eid).
-> - **Matching Visual Themes**:
->   - **Diwali**: Continuous golden fairy lights with pulsing amber and saffron bulbs, plus corner earthen diyas with animated flickering flames.
->   - **Christmas**: Evergreen pine needle garland with blinking multi-color holiday bulbs (ruby, emerald, warm gold, sky blue) and corner holly wreaths.
->   - **Eid**: Emerald and golden arabesque lace with illuminated star accents and corner crescent moons.
->   - **Holi**: Multi-color rainbow gradient ribbons and festive color bursts on all four sides.
->   - **New Year**: Royal blue and champagne gold glittering starry ribbon borders on all four sides.
->   - **Independence Day**: Continuous saffron, white, and green tricolor border framing the page.
-> - **Natural Page Scrolling**: The border frame is mounted to the page container (`absolute inset-0 pointer-events-none`), framing the entire scrollable document and moving naturally with page scroll without obstructing buttons, inputs, or calendar slots.
+> The following choices were confirmed during the interactive interview:
+
+- **Confirmed Decision 1 (Primary Workflow)**: Procedure-specific **Post-Op Care Instruction Dispatcher** with pre-configured WhatsApp templates, copy-to-clipboard, and printable patient handouts.
+- **Confirmed Decision 2 (Secondary Tool)**: **Real-Time Clinic Live Status & Doctor Availability Console**, managed by all non-patient staff (`admin`, `super-admin`, `dentist`, `receptionist`), updating live indicators on the public Clinic Portfolio.
+- **Confirmed Decision 3 (Interface Location)**: Integrated directly into the existing **Appointments Tab View** within the staff dashboard for zero-friction access during patient flow.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Transforms the clinic application into an immersive, beautifully framed holiday experience where festive lighting garlands surround the entire workspace on all four sides, seamlessly paired with the existing logo Santa cap / flickering diya ornaments.
-- **Target Audience**: All patients, doctors, and staff visiting or managing the clinic during festive seasons.
-- **Key Value**: Delivers a rich celebration atmosphere while maintaining 100% zero-obstruction access to clinical workflows, appointments, patient reviews, and vouchers.
+- **What It Does**:
+  1. **Post-Op Care Dispatcher**: Enables the clinic assistant or dentist to send procedure-specific post-treatment care instructions (e.g. Tooth Extraction, Root Canal, Crown/Bridge, Scaling, Implants, Whitening) directly to the patient's WhatsApp in one click, copy text, or print a clinical care slip.
+  2. **Clinic & Doctor Live Status Manager**: Allows any clinic assistant, receptionist, or doctor to set the clinic's real-time operational status (Open, Lunch Break, Emergency Only, Closed) and update doctor on-duty status (Available, In Surgery, On Break, Off-Duty) with optional expected resume times.
+  3. **Live Portfolio Presence**: Broadcasts live clinic status and doctor availability to the public Clinic Portfolio so prospective and walk-in patients know clinic readiness before visiting.
+- **Target Audience**: Clinic Assistants, Receptionists, Dental Surgeons, and Patients receiving post-treatment care.
+- **Key Value**: Eliminates repetitive verbal post-op explanations, reduces post-operative complications via structured WhatsApp care guides, and minimizes walk-in confusion.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### The 4-Border Festival Frame Architecture
-1. **Top Border**:
-   - Integrated with the header navigation bar and top garland banner, featuring animated fairy lights and garland.
-2. **Left & Right Vertical Borders**:
-   - Slender ($12\text{px}$–$16\text{px}$) decorative vertical borders running along the left and right margins of the page.
-   - Repeating vertical fairy lights with alternating bulb glow phases and subtle garland ivy/pine textures.
-3. **Bottom Border**:
-   - Matching horizontal border running across the bottom of the page, sitting naturally below the footer and content.
-4. **Four Corner Ornaments**:
-   - **Diwali**: Glowing brass diyas with animated flickering flames at the junctions.
-   - **Christmas**: Festive holly leaf clusters with red berries and snowflakes.
-   - **Eid**: Golden crescent moons with 8-pointed star sparkles.
-   - **Holi**: Vibrant color splashes.
-   - **New Year**: Starburst sparkles.
-5. **Pointer-Events Protection**:
-   - Marked with `pointer-events-none` so clicking, selecting text, or tapping buttons near the screen edges is never intercepted or delayed.
+### Key User Flows
+
+1. **Dispatching Post-Op Instructions**:
+   - In the **Appointments** view, the assistant locates a completed or ongoing treatment.
+   - The assistant clicks the **"Post-Op Care"** button on the appointment card.
+   - A modal opens with pre-selected clinical care guidelines matching the appointment's treatment (gauze biting duration, cold compress advice, food restrictions, oral rinse schedule, emergency contact).
+   - The assistant clicks **"Send via WhatsApp"** to launch WhatsApp Web/mobile with formatted text (`wa.me/<phone>?text=...`), or clicks **"Copy Text"** or **"Print Slip"**.
+
+2. **Managing Live Clinic Status & Doctor Availability**:
+   - At the top of the **Appointments** view, a dedicated **Live Status Control Bar** displays current status.
+   - The assistant toggles Clinic Status (`Open`, `Lunch Break`, `Emergency Only`, `Closed`) or updates a doctor's status (`Available`, `In Surgery`, `On Break`, `Off Duty`) with optional note (e.g., "Available from 3:30 PM").
+   - Changes persist to Firestore (`clinics/{clinicId}`) in real-time.
+
+3. **Public Clinic Portfolio View**:
+   - Visitors on the Clinic Portfolio page see a real-time status pill in the hero and opening hours card (e.g., `🟢 Currently Open for Consultations` or `🟡 Lunch Break · Resumes 2:00 PM`).
+   - In the Doctors & Surgeons roster, each doctor card displays their live availability state (e.g., `Available Now`, `In Surgery`).
+
+### Visual Identity & Theme
+
+- **Appointments View Status Bar**:
+  - Border: `border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 bg-white dark:bg-slate-900 shadow-xs`.
+  - Status Indicators: Subtle live status markers pairing colors with clear text (`Open` in emerald, `Lunch Break` in amber, `Closed` in rose, `In Surgery` in purple).
+- **Post-Op Modal**:
+  - Clean medical typography with unboxed bullet points, warning notes, and high-contrast action buttons (`bg-emerald-600 hover:bg-emerald-700` for WhatsApp).
 
 ---
 
-## 3. Key Technical Decisions & Trade-Offs
+## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Frame Placement in Root Layout (`App.tsx`) vs. Individual Views**:
-  - *Chosen Approach*: Mount `FestivalPageFrame` inside the root `<div className="min-h-screen relative ...">` in `App.tsx`.
-  - *Why*: Ensures consistent border framing across all views (Portfolio, Appointments, Patient Reviews, Billing, Settings) with zero code duplication.
-- **Decision 2: Natural Page Scrolling vs. Fixed Screen Frame**:
-  - *Chosen Approach*: As confirmed by user choice, use `absolute inset-0 pointer-events-none` on the scrollable container so the border frame moves naturally with the page content.
-  - *Why*: Prevents covering floating action buttons (such as the AI Chatbot or mobile menus) on small viewports and provides an authentic framed page feel.
-- **Decision 3: Responsive Thickness & Screen Adaptation**:
-  - *Chosen Approach*: Adaptive sizing ($12\text{px}$ on desktop, $6\text{px}$ on mobile) so small mobile screens maintain maximum readable space while retaining full decorative beauty.
+- **Decision 1: Direct WhatsApp URL Integration vs. Third-Party Gateway API**
+  - *Chosen Approach*: Direct `https://wa.me/{phone}?text={encoded}` integration.
+  - *Why*: Instant, zero-cost, requires no paid API keys or webhook servers, and works seamlessly on both desktop WhatsApp Web and mobile WhatsApp apps.
+
+- **Decision 2: Non-Patient Role Gate**
+  - *Chosen Approach*: Allowed for all roles except `'patient'` (`role !== 'patient'`).
+  - *Why*: Clinic assistants and receptionists are the primary staff managing front-desk walk-in queues and doctor chairs, while doctors and admins also need control.
+
+- **Decision 3: Treatment-Aware Clinical Care Templates**
+  - *Chosen Approach*: Rich built-in clinical templates for major dental procedures (Extractions, RCT, Fillings, Implants, Braces, Whitening, Cleaning) with editable custom notes.
+  - *Why*: Provides instant high-grade medical accuracy while allowing custom doctor notes.
 
 ---
 
-## 4. Technical Architecture & Component Diagram
+## 4. Technical Architecture & Data Strategy
+
+### System Architecture Diagram
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        App.tsx Main Container                          │
-│                                                                        │
-│   ╔════════════════════════════════════════════════════════════════╗   │
-│   ║  [Top Festival Border / Garland]                              ║   │
-│   ║                                                               ║   │
-│   ║ [L]                                                       [R] ║   │
-│   ║ [e]    Header Bar (Logo + Santa Cap / Diya)               [i] ║   │
-│   ║ [f]    Main Page Content (Services, Facilities, Reviews)   [g] ║   │
-│   ║ [t]    Appointments, Vouchers, Financial Dashboard        [h] ║   │
-│   ║ [ ]                                                       [t] ║   │
-│   ║ [B]                                                       [B] ║   │
-│   ║ [o]                                                       [o] ║   │
-│   ║ [r]                                                       [r] ║   │
-│   ║ [d]                                                       [d] ║   │
-│   ║ [e]                                                       [e] ║   │
-│   ║ [r]                                                       [r] ║   │
-│   ║                                                               ║   │
-│   ║  [Bottom Festival Border / Diya String / Garland]             ║   │
-│   ╚════════════════════════════════════════════════════════════════╝   │
+│                        Staff Dashboard (Appointments)                  │
+├────────────────────────────────────────────────────────────────────────┤
+│  Top Control Bar: [Live Clinic Status & Doctor Availability Manager]   │
+│  • Clinic Mode: [Open | Lunch Break | Closed | Emergency]             │
+│  • Doctor Roster: [Dr. Tohid: Available] [Dr. Rao: In Surgery]         │
+│  (Managed by Admin, Dentist, Receptionist, Assistant)                  │
+├────────────────────────────────────────────────────────────────────────┤
+│  Appointment Cards                                                     │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ Patient: John Doe · Treatment: Root Canal Treatment              │  │
+│  │ [Reschedule] [Billing] ────► [Post-Op Care Instructions 💬]      │  │
+│  └──────────────────────────────────┬───────────────────────────────┘  │
+└─────────────────────────────────────┼──────────────────────────────────┘
+                                      │
+                                      ▼
+             ┌──────────────────────────────────────────────────┐
+             │       Post-Op Care Instruction Dispatcher        │
+             │  • Procedure Care Rules (RCT, Extraction, etc.)  │
+             │  • Customized Medications & Follow-up Note       │
+             │  • [Send WhatsApp] [Copy] [Print Care Slip]      │
+             └──────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Firestore (clinics/{clinicId})                    │
+│  • liveStatus: { isOpen, statusMode, customNote, doctorAvailability } │
+└─────────────────────────────────────┬──────────────────────────────────┘
+                                      │ Real-time Sync
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Public Clinic Portfolio Page                      │
+│  • Hero & Hours: "🟢 Currently Open · Walk-ins Welcome"               │
+│  • Doctor Cards: "Dr. Tohid · Available for Consultations"            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Components to Update
-1. **`src/components/FestivalHeaderDecor.tsx`**:
-   - Add `FestivalPageFrame`: Renders the top, bottom, left, and right borders with the active festival theme, plus decorative corner accents.
-2. **`src/App.tsx`**:
-   - Mount `<FestivalPageFrame />` inside the root layout wrapper so it surrounds all pages.
-3. **`src/components/FestivalDecorModal.tsx`**:
-   - Reflect the full 4-border frame in the preview and options.
+### Data Schema Additions
+
+```typescript
+// types.ts
+export type DoctorAvailabilityStatus = 'available' | 'in_surgery' | 'on_break' | 'out_of_clinic';
+
+export interface DoctorAvailability {
+  dentistId: string;
+  dentistName: string;
+  status: DoctorAvailabilityStatus;
+  statusNote?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface ClinicLiveStatus {
+  isOpen: boolean;
+  statusMode: 'open' | 'closed' | 'lunch_break' | 'emergency_only';
+  customNote?: string;
+  expectedResumeTime?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  doctorAvailability?: Record<string, DoctorAvailability>;
+}
+```
 
 ---
 
-## 5. Implementation Steps
+## 5. Implementation Verification & Completed Tasks
 
-1. Add `FestivalPageFrame` and vertical/bottom SVG light strings and garlands in `src/components/FestivalHeaderDecor.tsx`.
-2. Mount `FestivalPageFrame` in `src/App.tsx`.
-3. Update `src/components/FestivalDecorModal.tsx` preview card.
-4. Co-execute `compile_applet` and `lint_applet` to verify zero errors and clean build.
+- [x] Extended TypeScript interfaces in `src/types.ts` with `DoctorAvailabilityStatus`, `DoctorAvailability`, `ClinicLiveStatus`, and added `liveStatus` to the `Clinic` interface.
+- [x] Created `src/components/PostOpCareModal.tsx` containing clinical post-operative instructions for 8 dental procedures (Extractions, Root Canal, Crown/Bridge, Implants, Whitening, Scaling, Braces, General), 1-click WhatsApp dispatcher (`wa.me/<phone>?text=...`), clipboard copy, and printable clinical handout.
+- [x] Created `src/components/ClinicLiveStatusBar.tsx` featuring real-time operational status switcher (Open, Lunch Break, Emergency Only, Closed) and doctor availability toggles (Available, In Surgery, On Break, Off Duty) for clinic staff.
+- [x] Integrated `ClinicLiveStatusBar` and `PostOpCareModal` into `src/components/Dashboard.tsx` in the Appointments tab view with a dedicated "Post-Op" action button on appointment cards.
+- [x] Updated `src/components/LandingPage.tsx` (Clinic Portfolio) to reflect live clinic operational status in Hero and Opening Hours, and show doctor chairside availability badges on specialist cards.
+- [x] Added **Clinic Status Scheduling**: Time-window scheduling for clinic operational mode (Lunch Break, Emergency, Closed, Open) with presets (30m, 1h, Lunch, Until 8 PM), custom notes, active banner, and automatic reversion when time expires.
+- [x] Added **Doctor Live Availability Scheduling**: Procedure-aware scheduling on doctor cards (In Surgery, On Break, Off Duty) with chair/operatory room assignment, duration presets (15m, 30m, 45m, 60m), and countdown return estimates.
+- [x] Added **Strict Clinic Scope Synchronization**: Enforced clinic-scoped doctor filtering across `useClinicData.ts` and `ClinicLiveStatusBar.tsx`, preventing cross-clinic doctor leakage and providing a 1-click `Sync Clinic Doctors` action to prune and synchronize specialists exclusively for the active clinic.
+- [x] Verified via concurrent `compile_applet` and `lint_applet` with zero build and type check errors, and restarted dev server.

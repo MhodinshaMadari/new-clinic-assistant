@@ -368,12 +368,55 @@ export interface Clinic {
   locations: ClinicLocation[];
   facilities?: ClinicFacility[];
   socialHandles?: SocialHandle[];
-  youtubeVideos?: ClinicYouTubeVideo[];
   youtubeChannelUrl?: string;
+  youtubeVideos?: ClinicYouTubeVideo[];
   googleConfig?: ClinicGoogleConfig;
+  liveStatus?: ClinicLiveStatus;
   createdAt: string;
   updatedAt?: string;
   createdBy?: string;
+}
+
+export type DoctorAvailabilityStatus = 'available' | 'in_surgery' | 'on_break' | 'out_of_clinic';
+
+export interface ScheduledStatusSlot {
+  status: DoctorAvailabilityStatus;
+  startTime: string;
+  endTime: string;
+  reason?: string;
+  autoRevert?: boolean;
+}
+
+export interface DoctorAvailability {
+  dentistId: string;
+  dentistName: string;
+  status: DoctorAvailabilityStatus;
+  statusNote?: string;
+  chairRoom?: string;
+  scheduledUntil?: string;
+  scheduledSlot?: ScheduledStatusSlot;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface ScheduledClinicSlot {
+  statusMode: 'open' | 'closed' | 'lunch_break' | 'emergency_only';
+  startTime: string;
+  endTime: string;
+  note?: string;
+  autoRevert?: boolean;
+}
+
+export interface ClinicLiveStatus {
+  isOpen: boolean;
+  statusMode: 'open' | 'closed' | 'lunch_break' | 'emergency_only';
+  customNote?: string;
+  expectedResumeTime?: string;
+  scheduledUntil?: string;
+  scheduledSlot?: ScheduledClinicSlot;
+  updatedAt?: string;
+  updatedBy?: string;
+  doctorAvailability?: Record<string, DoctorAvailability>;
 }
 
 export type FestivalType = 'eid' | 'diwali' | 'christmas' | 'holi' | 'newyear' | 'independence' | 'custom';

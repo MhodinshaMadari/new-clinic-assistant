@@ -42,7 +42,11 @@ import {
   ChevronRight,
   Building2,
   Globe,
-  Sliders
+  Sliders,
+  Radio,
+  Coffee,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -332,10 +336,46 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                     <h3 className="font-bold text-lg text-slate-900 dark:text-white font-display">{activeClinic?.name}</h3>
                     <p className="text-[10px] font-mono text-teal-600 dark:text-teal-400 font-bold">/{activeClinic?.slug}</p>
                   </div>
-                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full flex items-center border border-transparent dark:border-emerald-800/40">
-                    <span className="h-2 w-2 bg-emerald-500 rounded-full mr-1.5 animate-ping"></span>
-                    Online
-                  </span>
+                  {/* Real-time Clinic Live Operational Status */}
+                  {(() => {
+                    const status = activeClinic?.liveStatus?.statusMode || (activeClinic?.liveStatus as any)?.status || 'open';
+                    const scheduledUntil = activeClinic?.liveStatus?.scheduledUntil;
+
+                    if (status === 'lunch_break') {
+                      return (
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800/60 px-2.5 py-1 rounded-full flex items-center shadow-xs">
+                          <span className="h-2 w-2 bg-amber-500 rounded-full mr-1.5 animate-pulse"></span>
+                          <span>Lunch Break</span>
+                          {scheduledUntil && <span className="ml-1 text-[10px] font-mono font-bold">(Until {scheduledUntil})</span>}
+                        </span>
+                      );
+                    }
+                    if (status === 'emergency_only') {
+                      return (
+                        <span className="text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/70 border border-rose-200 dark:border-rose-800/60 px-2.5 py-1 rounded-full flex items-center shadow-xs">
+                          <span className="h-2 w-2 bg-rose-500 rounded-full mr-1.5 animate-ping"></span>
+                          <span>Emergency Only</span>
+                          {scheduledUntil && <span className="ml-1 text-[10px] font-mono font-bold">(Until {scheduledUntil})</span>}
+                        </span>
+                      );
+                    }
+                    if (status === 'closed') {
+                      return (
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-full flex items-center shadow-xs">
+                          <span className="h-2 w-2 bg-slate-400 rounded-full mr-1.5"></span>
+                          <span>Closed Today</span>
+                          {scheduledUntil && <span className="ml-1 text-[10px] font-mono font-bold">(Until {scheduledUntil})</span>}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/40 px-2.5 py-1 rounded-full flex items-center shadow-xs">
+                        <span className="h-2 w-2 bg-emerald-500 rounded-full mr-1.5 animate-ping"></span>
+                        <span>Open Now</span>
+                        {scheduledUntil && <span className="ml-1 text-[10px] font-mono font-bold">(Until {scheduledUntil})</span>}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Multi-Branch Selector if enabled */}
@@ -362,9 +402,26 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                 <div className="space-y-4 text-xs">
                   <div className="flex items-start space-x-3">
                     <Clock className="h-5 w-5 text-revon-blue dark:text-teal-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h4 className="font-bold text-slate-800 dark:text-slate-200">Opening Hours</h4>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200">Opening Hours</h4>
+                        {(activeClinic?.liveStatus?.statusMode === 'lunch_break' || (activeClinic?.liveStatus as any)?.status === 'lunch_break') && (
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                            Resumes {activeClinic?.liveStatus?.expectedResumeTime || '2:00 PM'}
+                          </span>
+                        )}
+                        {(activeClinic?.liveStatus?.statusMode === 'emergency_only' || (activeClinic?.liveStatus as any)?.status === 'emergency_only') && (
+                          <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                            Emergency Patients Only
+                          </span>
+                        )}
+                      </div>
                       <p className="text-slate-500 dark:text-slate-400">{selectedLocation?.workingHours || 'Mon - Sat: 09:00 AM - 08:00 PM'}</p>
+                      {(activeClinic?.liveStatus?.customNote || (activeClinic?.liveStatus as any)?.statusNote) && (
+                        <p className="text-[11px] text-teal-700 dark:text-teal-300 font-medium mt-1 bg-teal-50/80 dark:bg-teal-950/60 border border-teal-200/60 dark:border-teal-800/60 px-2 py-0.5 rounded-md inline-block">
+                          Note: {activeClinic?.liveStatus?.customNote || (activeClinic?.liveStatus as any)?.statusNote}
+                        </p>
+                      )}
                     </div>
                   </div>
                   
@@ -487,6 +544,58 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                       <div className="space-y-1">
                         <h3 className="text-xl font-bold font-display text-white">{doc.displayName}</h3>
                         <p className="text-xs text-revon-teal capitalize font-semibold">{doc.specialty}</p>
+
+                        {/* Real-time Doctor Availability Badge */}
+                        {(() => {
+                          const docAvailMap = activeClinic?.liveStatus?.doctorAvailability || {};
+                          const liveDoc = docAvailMap[doc.id] || 
+                            Object.values(docAvailMap).find((d: any) => (d.dentistId === doc.id || d.doctorId === doc.id || d.dentistName?.toLowerCase() === doc.displayName?.toLowerCase() || d.doctorName?.toLowerCase() === doc.displayName?.toLowerCase()));
+                          const status = liveDoc?.status || 'available';
+
+                          return (
+                            <div className="pt-2 flex flex-wrap items-center justify-center gap-1.5">
+                              {status === 'available' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  Available in Clinic
+                                </span>
+                              )}
+                              {status === 'in_surgery' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping" />
+                                  In Chairside Surgery
+                                </span>
+                              )}
+                              {status === 'on_break' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  <Coffee className="w-3 h-3 text-amber-400" />
+                                  On Short Break
+                                </span>
+                              )}
+                              {(status === 'out_of_clinic' || (status as string) === 'off_duty') && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-600/40 text-slate-300 border border-slate-600/50">
+                                  Off Duty Today
+                                </span>
+                              )}
+                              {liveDoc?.scheduledUntil && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
+                                  <Clock className="w-3 h-3 text-indigo-400" />
+                                  <span>Until {liveDoc.scheduledUntil}</span>
+                                </span>
+                              )}
+                              {liveDoc?.chairRoom && (
+                                <span className="text-[10px] font-mono text-slate-300 bg-slate-900/80 px-2 py-0.5 rounded-md border border-slate-700/60">
+                                  {liveDoc.chairRoom}
+                                </span>
+                              )}
+                              {liveDoc?.statusNote && (
+                                <span className="text-[10px] font-medium text-teal-300 bg-teal-950/60 px-2 py-0.5 rounded-md border border-teal-800/40">
+                                  {liveDoc.statusNote}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                       <p className="text-sm text-slate-300 leading-relaxed">
                         {doc.bio}

@@ -110,9 +110,74 @@ export const STATIC_SURGEONS: Surgeon[] = [
     isActive: true,
     consultationTiming: 'Fri - Sat: 09:00 AM - 12:00 PM',
     createdAt: new Date('2026-01-03T00:00:00Z').toISOString(),
-    avatarUrl: dentistMaleOrthodontist
+    avatarUrl: dentistMaleOrthodontist,
+    clinicSlug: 'revon-dental'
   }
 ];
+
+export const CLINIC_DEFAULT_SURGEONS: Record<string, Surgeon[]> = {
+  'revon-dental': STATIC_SURGEONS.map(s => ({ ...s, clinicSlug: 'revon-dental' })),
+  'smilecare': [
+    {
+      id: 'sc-s1',
+      displayName: 'Dr. Kavita Shenoy',
+      specialty: 'Chief Orthodontist & Smile Architect',
+      bio: 'Pioneering invisible aligners, lingual orthodontics, and comprehensive smile makeovers with over 11 years of precision experience.',
+      email: 'kavita.shenoy@smilecare.in',
+      phone: '+91 91234 56789',
+      isBoardCertified: true,
+      isActive: true,
+      consultationTiming: 'Mon - Thu: 10:00 AM - 02:00 PM',
+      createdAt: '2026-02-01T00:00:00Z',
+      clinicSlug: 'smilecare',
+      avatarUrl: dentistFemaleSurgeon
+    },
+    {
+      id: 'sc-s2',
+      displayName: 'Dr. Rohan Deshmukh',
+      specialty: 'Senior Periodontist & Implant Specialist',
+      bio: 'Specialist in 3D computer-guided implants, bone augmentation, and gentle laser periodontal therapies.',
+      email: 'rohan.deshmukh@smilecare.in',
+      phone: '+91 91234 56790',
+      isBoardCertified: true,
+      isActive: true,
+      consultationTiming: 'Wed - Sat: 02:30 PM - 06:30 PM',
+      createdAt: '2026-02-02T00:00:00Z',
+      clinicSlug: 'smilecare',
+      avatarUrl: dentistMaleLead
+    }
+  ],
+  'apex-studio': [
+    {
+      id: 'apex-s1',
+      displayName: 'Dr. Siddharth Mehta',
+      specialty: 'Lead Interventional Cardiologist',
+      bio: 'Expert in preventive cardiovascular screening, blood pressure optimization, and advanced non-invasive cardiac care.',
+      email: 'siddharth.mehta@apexstudio.in',
+      phone: '+91 99887 76655',
+      isBoardCertified: true,
+      isActive: true,
+      consultationTiming: 'Mon - Fri: 09:00 AM - 01:00 PM',
+      createdAt: '2026-03-01T00:00:00Z',
+      clinicSlug: 'apex-studio',
+      avatarUrl: dentistMaleLead
+    },
+    {
+      id: 'apex-s2',
+      displayName: 'Dr. Neha Kapoor',
+      specialty: 'Consultant Dermatologist & Laser Surgeon',
+      bio: 'Specializing in medical dermatology, aesthetic skin restoration, and gentle therapeutic treatments.',
+      email: 'neha.kapoor@apexstudio.in',
+      phone: '+91 99887 76656',
+      isBoardCertified: true,
+      isActive: true,
+      consultationTiming: 'Tue - Sat: 02:00 PM - 06:00 PM',
+      createdAt: '2026-03-02T00:00:00Z',
+      clinicSlug: 'apex-studio',
+      avatarUrl: dentistFemaleSurgeon
+    }
+  ]
+};
 
 export const TREATMENTS: TreatmentService[] = [
   {
@@ -183,23 +248,70 @@ export const STATIC_DENTISTS: UserProfile[] = [
     displayName: 'Dr. Mohammad Tohid Kaginalli',
     email: 'tohid.kaginalli@revondental.in',
     role: 'dentist',
-    phone: '+91 98765 43210'
+    phone: '+91 98765 43210',
+    clinicSlug: 'revon-dental'
   },
   {
     uid: 'dentist-dr-ananya',
     displayName: 'Dr. Ananya Rao',
     email: 'ananya.rao@revondental.in',
     role: 'dentist',
-    phone: '+91 98765 43211'
+    phone: '+91 98765 43211',
+    clinicSlug: 'revon-dental'
   },
   {
     uid: 'dentist-dr-rajesh',
     displayName: 'Dr. Rajesh Kumar',
     email: 'rajesh.kumar@revondental.in',
     role: 'dentist',
-    phone: '+91 98765 43212'
+    phone: '+91 98765 43212',
+    clinicSlug: 'revon-dental'
   }
 ];
+
+export const CLINIC_DEFAULT_DENTISTS: Record<string, UserProfile[]> = {
+  'revon-dental': STATIC_DENTISTS,
+  'smilecare': [
+    {
+      uid: 'dentist-smilecare-kavita',
+      displayName: 'Dr. Kavita Shenoy',
+      email: 'kavita.shenoy@smilecare.in',
+      role: 'dentist',
+      phone: '+91 91234 56789',
+      specialty: 'Chief Orthodontist',
+      clinicSlug: 'smilecare'
+    },
+    {
+      uid: 'dentist-smilecare-rohan',
+      displayName: 'Dr. Rohan Deshmukh',
+      email: 'rohan.deshmukh@smilecare.in',
+      role: 'dentist',
+      phone: '+91 91234 56790',
+      specialty: 'Periodontist & Implantologist',
+      clinicSlug: 'smilecare'
+    }
+  ],
+  'apex-studio': [
+    {
+      uid: 'dentist-apex-siddharth',
+      displayName: 'Dr. Siddharth Mehta',
+      email: 'siddharth.mehta@apexstudio.in',
+      role: 'dentist',
+      phone: '+91 99887 76655',
+      specialty: 'Lead Cardiologist',
+      clinicSlug: 'apex-studio'
+    },
+    {
+      uid: 'dentist-apex-neha',
+      displayName: 'Dr. Neha Kapoor',
+      email: 'neha.kapoor@apexstudio.in',
+      role: 'dentist',
+      phone: '+91 99887 76656',
+      specialty: 'Consultant Dermatologist',
+      clinicSlug: 'apex-studio'
+    }
+  ]
+};
 
 export const STATIC_REVIEWS: Review[] = [
   {
@@ -264,13 +376,15 @@ export function useClinicData() {
         });
         
         if (list.length === 0) {
-          setDentists(STATIC_DENTISTS);
+          const fallback = CLINIC_DEFAULT_DENTISTS[activeSlug] || [];
+          setDentists(fallback);
         } else {
           setDentists(list);
         }
       } catch (err) {
         console.warn("Failed to query custom doctors & specialists, using defaults:", err);
-        setDentists(STATIC_DENTISTS);
+        const fallback = CLINIC_DEFAULT_DENTISTS[activeSlug] || [];
+        setDentists(fallback);
       }
     };
 
@@ -348,14 +462,16 @@ export function useClinicData() {
         }
       });
       if (list.length === 0) {
-        setSurgeons(STATIC_SURGEONS);
+        const fallback = CLINIC_DEFAULT_SURGEONS[activeSlug] || [];
+        setSurgeons(fallback);
       } else {
         list.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
         setSurgeons(list);
       }
     }, (err) => {
       console.warn("Surgeons listener failed, using defaults:", err);
-      setSurgeons(STATIC_SURGEONS);
+      const fallback = CLINIC_DEFAULT_SURGEONS[activeSlug] || [];
+      setSurgeons(fallback);
     });
 
     // 5. Fetch social handles in real-time specific to clinic

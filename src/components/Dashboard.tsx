@@ -87,11 +87,14 @@ import {
   Globe,
   Receipt,
   Pencil,
-  FileX
+  FileX,
+  MessageSquare
 } from 'lucide-react';
 import { FestivalDecorModal } from './FestivalDecorModal';
 import { UpdateClinicUriModal } from './UpdateClinicUriModal';
 import { AppointmentBillModal } from './AppointmentBillModal';
+import { ClinicLiveStatusBar } from './ClinicLiveStatusBar';
+import { PostOpCareModal } from './PostOpCareModal';
 import { 
   collection, 
   doc, 
@@ -1069,6 +1072,7 @@ export function Dashboard({
 
   const [showDraftBillModal, setShowDraftBillModal] = useState(false);
   const [selectedAppointmentForBill, setSelectedAppointmentForBill] = useState<Appointment | null>(null);
+  const [selectedPostOpAppointment, setSelectedPostOpAppointment] = useState<Appointment | null>(null);
   
   // In-memory composer items for drafting bills
   const [draftBillItems, setDraftBillItems] = useState<BillingItem[]>([]);
@@ -1158,13 +1162,13 @@ export function Dashboard({
   const [adminServicesPage, setAdminServicesPage] = useState(1);
   const [adminServicesPageSize, setAdminServicesPageSize] = useState(5);
 
-  // Sub-Tab Segregation & Controlled Accordion State for Admin Portal
-  type AdminCategoryTab = 'all' | 'clinic' | 'staff' | 'services' | 'reviews';
+  // Sub-Tab Segregation & Controlled Card State for Admin Portal
+  type AdminSubTab = 'overview' | 'profile' | 'team' | 'services' | 'feedback';
 
   const ALL_ADMIN_SECTIONS = ['clinic_uri', 'features', 'branding', 'social', 'users', 'surgeons', 'permissions', 'facilities', 'services', 'reviews'] as const;
   type AdminSectionId = typeof ALL_ADMIN_SECTIONS[number];
 
-  const [activeAdminCategory, setActiveAdminCategory] = useState<AdminCategoryTab>('all');
+  const [adminSubTab, setAdminSubTab] = useState<AdminSubTab>('overview');
   const [openAdminSections, setOpenAdminSections] = useState<AdminSectionId[]>([
     'clinic_uri', 'features', 'branding', 'social', 'users', 'surgeons', 'permissions', 'facilities', 'services', 'reviews'
   ]);
@@ -3371,6 +3375,9 @@ export function Dashboard({
           {staffTab === 'appointments' && activeClinic?.features?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
             <div className="space-y-6 animate-fadeIn">
               
+              {/* Real-time Clinic Live Status & Doctor Availability Quick-Toggle Bar */}
+              <ClinicLiveStatusBar />
+              
               {/* Filter controls */}
               <div className="bg-white rounded-2xl border border-slate-100 p-6 grid md:grid-cols-4 gap-4 items-end">
                 <div>
@@ -3794,6 +3801,19 @@ export function Dashboard({
                               </button>
                             )}
                             
+                            {/* Post-Op Care Instruction Dispatcher Button */}
+                            {isStaff && (
+                              <button
+                                id={`post-op-btn-${app.id}`}
+                                onClick={() => setSelectedPostOpAppointment(app)}
+                                className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 px-2.5 py-1.5 rounded-xl cursor-pointer shadow-xs flex items-center space-x-1 transition-all"
+                                title="Dispatch procedure post-op care instructions via WhatsApp"
+                              >
+                                <MessageSquare className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>Post-Op</span>
+                              </button>
+                            )}
+
                             <button
                               id={`reminder-btn-${app.id}`}
                               onClick={() => handleTriggerReminder(app)}
@@ -4281,159 +4301,196 @@ export function Dashboard({
           {staffTab === 'admin' && isAdminOrSuper && (
             <div className="space-y-4 animate-fadeIn">
 
-              {/* Controlled Accordion Master Control Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4.5 bg-slate-900 text-white rounded-2xl shadow-sm border border-slate-800">
+              {/* Admin Portal Header Breadcrumb & Clinic Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
                 <div className="flex items-center space-x-3.5">
-                  <div className="p-2.5 bg-teal-500/20 border border-teal-500/30 rounded-xl text-teal-400 flex-shrink-0">
+                  <div className="p-2.5 bg-gradient-to-br from-teal-500/10 to-revon-blue/10 text-revon-blue dark:text-teal-400 rounded-xl border border-teal-200/60 dark:border-teal-800/60 shrink-0">
                     <Sliders className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm font-display text-slate-100 flex items-center gap-2">
-                      <span>Admin Portal Controlled Accordion</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 bg-teal-500/20 text-teal-300 rounded-full border border-teal-500/30 font-semibold">
-                        {openAdminSections.length} / {ALL_ADMIN_SECTIONS.length} Expanded
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white font-display">
+                        Clinic Administration Console
+                      </h3>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 rounded-full border border-amber-500/30">
+                        {isSuperAdmin ? 'Super Admin' : 'Admin'}
                       </span>
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Click section headers to expand or collapse items, or use global toggles.
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Organized management for {activeClinic?.name || 'Clinic'} across operational modules, identity, team privileges, and patient engagement
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
+
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={expandAllAdminSections}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-slate-700"
+                    className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-slate-200 dark:border-slate-700"
+                    title="Expand all cards in view"
                   >
-                    <Maximize2 className="h-3.5 w-3.5 text-teal-400" />
+                    <Maximize2 className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
                     <span>Expand All</span>
                   </button>
                   <button
                     type="button"
                     onClick={collapseAllAdminSections}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-slate-700"
+                    className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-slate-200 dark:border-slate-700"
+                    title="Collapse cards"
                   >
-                    <Minimize2 className="h-3.5 w-3.5 text-amber-400" />
+                    <Minimize2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                     <span>Collapse All</span>
                   </button>
                 </div>
               </div>
 
-              {/* Festival Graphic Effects Promotion & Control Banner */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 shadow-md shrink-0">
-                    <PartyPopper className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
-                      <span>Festival Decorative Graphic Effects</span>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full border border-amber-500/30">
-                        ADMIN & SUPER-ADMIN
-                      </span>
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                      Set up seasonal celebrations, animated graphics, floating particles & greeting banners for Eid, Diwali, Christmas, Holi, etc.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowFestivalModal(true)}
-                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-2 shrink-0"
-                >
-                  <PartyPopper className="h-4 w-4" />
-                  <span>Configure Festival Decor</span>
-                </button>
-              </div>
-
-              {/* Monthly Finances & Expense Tracking Admin Banner */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shrink-0">
-                    <TrendingUp className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
-                      <span>Monthly Earnings & Expenses Accounting</span>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-full border border-emerald-500/30">
-                        ADMIN & SUPER-ADMIN
-                      </span>
-                    </h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                      Configure monthly overhead targets for Clinic Rent, Staff Salaries, Consumable Items, and Other Expenses, or log itemized vouchers.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleStaffTabChange('finances')}
-                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-2 shrink-0"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Open Finances & Expenses</span>
-                </button>
-              </div>
-
-              {/* Admin Portal Sub-Tabs Segregation */}
-              <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  {[
-                    { id: 'all' as AdminCategoryTab, label: 'All Sections', icon: <Sliders className="w-4 h-4" />, count: isSuperAdmin ? 10 : 9 },
-                    { id: 'clinic' as AdminCategoryTab, label: 'Clinic & Branding', icon: <Building2 className="w-4 h-4" />, count: isSuperAdmin ? 4 : 3 },
-                    { id: 'staff' as AdminCategoryTab, label: 'Staff & Roles', icon: <Users className="w-4 h-4" />, count: 3 },
-                    { id: 'services' as AdminCategoryTab, label: 'Services & Facilities', icon: <Stethoscope className="w-4 h-4" />, count: 2 },
-                    { id: 'reviews' as AdminCategoryTab, label: 'Patient Reviews', icon: <Star className="w-4 h-4" />, count: 1 },
-                  ].map((tab) => {
-                    const isActive = activeAdminCategory === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveAdminCategory(tab.id)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                          isActive
-                            ? 'bg-revon-blue text-white shadow-sm'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200/70'
-                        }`}
-                      >
-                        {tab.icon}
-                        <span>{tab.label}</span>
-                        <span
-                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
-                            isActive ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
+              {/* 2-Column Responsive Layout: Vertical Left Sidebar + Main Content Cards */}
+              <div className="flex flex-col md:flex-row gap-6 items-start">
+                {/* Left Sidebar Navigation (Desktop) / Top Horizontal Rail (Mobile) */}
+                <aside className="w-full md:w-64 shrink-0 space-y-3 md:sticky md:top-20 z-20">
+                  <div className="p-1.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs flex md:flex-col overflow-x-auto md:overflow-x-visible gap-1.5 scrollbar-thin">
+                    {[
+                      {
+                        id: 'overview' as const,
+                        label: 'Overview',
+                        subtitle: 'Modules & operations',
+                        icon: Sliders,
+                        count: 'Modules',
+                      },
+                      {
+                        id: 'profile' as const,
+                        label: 'Clinic Profile',
+                        subtitle: 'Brand, logo & links',
+                        icon: Building2,
+                        count: isSuperAdmin ? '3 Sections' : '2 Sections',
+                      },
+                      {
+                        id: 'team' as const,
+                        label: 'Team & Access',
+                        subtitle: 'Staff, surgeons & roles',
+                        icon: Users,
+                        count: '3 Sections',
+                      },
+                      {
+                        id: 'services' as const,
+                        label: 'Services & Care',
+                        subtitle: 'Procedures & amenities',
+                        icon: Stethoscope,
+                        count: '2 Sections',
+                      },
+                      {
+                        id: 'feedback' as const,
+                        label: 'Patient Feedback',
+                        subtitle: 'Reviews & testimonials',
+                        icon: Star,
+                        count: 'Reviews',
+                      },
+                    ].map((tab) => {
+                      const isActive = adminSubTab === tab.id;
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setAdminSubTab(tab.id)}
+                          className={`w-full text-left px-3.5 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer whitespace-nowrap md:whitespace-normal group ${
+                            isActive
+                              ? 'bg-revon-blue text-white shadow-sm ring-2 ring-revon-blue/20'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-revon-blue dark:hover:text-teal-400 border border-transparent'
                           }`}
                         >
-                          {tab.count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            <div className={`p-1.5 rounded-lg shrink-0 transition-colors ${
+                              isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:text-revon-blue'
+                            }`}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="block truncate font-bold text-xs">{tab.label}</span>
+                              <span className={`hidden md:block text-[10px] truncate ${isActive ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`}>
+                                {tab.subtitle}
+                              </span>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ml-2 shrink-0 ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                          }`}>
+                            {tab.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
 
-                <div className="flex items-center space-x-2 ml-auto">
-                  <button
-                    type="button"
-                    onClick={expandAllAdminSections}
-                    className="text-[11px] font-bold text-slate-600 hover:text-revon-blue px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    Expand All
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={collapseAllAdminSections}
-                    className="text-[11px] font-bold text-slate-600 hover:text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    Collapse All
-                  </button>
-                </div>
-              </div>
+                {/* Main Content Area */}
+                <main className="flex-1 min-w-0 space-y-6">
 
-              {/* Accordion Item: Super Admin Clinic URI Management */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && isSuperAdmin && (
+                  {/* OVERVIEW SUB-TAB: Executive Banners & Operations Cards */}
+                  {adminSubTab === 'overview' && (
+                    <div className="space-y-4 animate-fadeIn">
+                      {/* Festival Graphic Effects Promotion & Control Banner */}
+                      <div className="p-4.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3.5">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+                            <PartyPopper className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
+                              <span>Festival Decorative Graphic Effects</span>
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full border border-amber-500/30">
+                                ACTIVE
+                              </span>
+                            </h4>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                              Configure seasonal holiday lighting, festive border garlands, logo ornaments (Santa cap, flickering diya, crescent) & greeting banners.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowFestivalModal(true)}
+                          className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-2 shrink-0"
+                        >
+                          <PartyPopper className="h-4 w-4" />
+                          <span>Configure Festival Decor</span>
+                        </button>
+                      </div>
+
+                      {/* Monthly Finances & Expense Tracking Admin Banner */}
+                      <div className="p-4.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3.5">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shrink-0">
+                            <TrendingUp className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-display flex items-center gap-2">
+                              <span>Monthly Earnings & Expenses Accounting</span>
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-full border border-emerald-500/30">
+                                ACCOUNTING
+                              </span>
+                            </h4>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                              Configure monthly overhead targets for Clinic Rent, Staff Salaries, Consumable Items, and Other Expenses, or log itemized vouchers.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleStaffTabChange('finances')}
+                          className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all flex items-center space-x-2 shrink-0"
+                        >
+                          <TrendingUp className="h-4 w-4" />
+                          <span>Open Finances & Expenses</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+              {/* Card 1: Super Admin Clinic URI Management */}
+              {adminSubTab === 'profile' && isSuperAdmin && (
                 <div className="bg-white rounded-2xl border border-teal-200/80 overflow-hidden shadow-xs transition-all duration-200">
                   <button
                     type="button"
@@ -4535,8 +4592,8 @@ export function Dashboard({
                 </div>
               )}
 
-              {/* Accordion Item 0: Clinic Modular Features & Capability Provisioning */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+              {/* Card 2: Clinic Modular Features & Capability Provisioning */}
+              {adminSubTab === 'overview' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -4738,8 +4795,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item 1: Clinic Logo & Invoice Branding */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+              {/* Card 3: Clinic Logo & Invoice Branding */}
+              {adminSubTab === 'profile' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5075,8 +5132,8 @@ export function Dashboard({
               </div>
               )}
               
-              {/* Accordion Item: Clinic Facilities & Patient Amenities Management */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'services') && (
+              {/* Card 4: Clinic Facilities & Patient Amenities Management */}
+              {adminSubTab === 'services' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5132,8 +5189,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item: Patient Reviews & Testimonials Moderation */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'reviews') && (
+              {/* Card 5: Patient Reviews & Testimonials Moderation */}
+              {adminSubTab === 'feedback' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                   <button
                     type="button"
@@ -5171,8 +5228,8 @@ export function Dashboard({
               </div>
               )}
               
-              {/* Accordion Item 2: Clinic Menu & Staff Access Permissions */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+              {/* Card 6: Clinic Menu & Staff Access Permissions */}
+              {adminSubTab === 'team' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5374,8 +5431,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item 3: Clinic Portfolio Footer Social Handles */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'clinic') && (
+              {/* Card 7: Clinic Portfolio Footer Social Handles */}
+              {adminSubTab === 'profile' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5543,8 +5600,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item 4: Clinic User Profiles Directory */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+              {/* Card 8: Clinic User Profiles Directory */}
+              {adminSubTab === 'team' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5710,8 +5767,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item 5: Meet Our Board-Certified Surgeons Panel */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'staff') && (
+              {/* Card 9: Meet Our Board-Certified Surgeons Panel */}
+              {adminSubTab === 'team' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -5918,8 +5975,8 @@ export function Dashboard({
               </div>
               )}
 
-              {/* Accordion Item 6: Offered Healthcare Services Management */}
-              {(activeAdminCategory === 'all' || activeAdminCategory === 'services') && (
+              {/* Card 10: Offered Healthcare Services Management */}
+              {adminSubTab === 'services' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs transition-all duration-200">
                 <button
                   type="button"
@@ -6119,6 +6176,8 @@ export function Dashboard({
               </div>
               )}
 
+                </main>
+              </div>
             </div>
           )}
 
@@ -8474,6 +8533,13 @@ export function Dashboard({
           setSelectedClinicForUri(null);
         }}
         clinic={selectedClinicForUri || activeClinic}
+      />
+
+      {/* Post-Op Care Instruction Dispatcher Modal */}
+      <PostOpCareModal
+        isOpen={!!selectedPostOpAppointment}
+        onClose={() => setSelectedPostOpAppointment(null)}
+        appointment={selectedPostOpAppointment}
       />
     </div>
   );
