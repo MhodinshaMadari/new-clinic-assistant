@@ -22,6 +22,7 @@ import { DentistSlotBreakdownView, STANDARD_TIME_SLOTS, isSlotBooked } from './D
 import { AdminFacilitiesManager } from './AdminFacilitiesManager';
 import { AdminReviewsManager } from './AdminReviewsManager';
 import { FinanceDashboard } from './FinanceDashboard';
+import { ExecutiveAnalyticsDashboard } from './ExecutiveAnalyticsDashboard';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 // @ts-ignore
@@ -88,7 +89,8 @@ import {
   Receipt,
   Pencil,
   FileX,
-  MessageSquare
+  MessageSquare,
+  BarChart3
 } from 'lucide-react';
 import { FestivalDecorModal } from './FestivalDecorModal';
 import { UpdateClinicUriModal } from './UpdateClinicUriModal';
@@ -201,6 +203,9 @@ export function Dashboard({
   const [isSavingHandles, setIsSavingHandles] = useState(false);
   const [saveHandlesSuccess, setSaveHandlesSuccess] = useState(false);
   const [saveHandlesError, setSaveHandlesError] = useState<string | null>(null);
+  const [showAddCustomLinkInput, setShowAddCustomLinkInput] = useState(false);
+  const [newCustomLinkName, setNewCustomLinkName] = useState('');
+  const [newCustomLinkUrl, setNewCustomLinkUrl] = useState('');
 
   useEffect(() => {
     if (socialHandles && !isSavingHandles) {
@@ -682,21 +687,34 @@ export function Dashboard({
     if (initialTab === 'surgeons') return 'surgeons';
     return 'appointments';
   });
-  const [staffTab, setStaffTab] = useState<'appointments' | 'reminders' | 'patients' | 'billing' | 'finances' | 'admin' | 'reviews' | 'support'>(() => {
+  const [staffTab, setStaffTab] = useState<'analytics' | 'appointments' | 'reminders' | 'patients' | 'billing' | 'finances' | 'admin' | 'reviews' | 'support'>(() => {
+    if (initialTab === 'appointments') return 'appointments';
+    if (initialTab === 'reminders') return 'reminders';
+    if (initialTab === 'patients') return 'patients';
+    if (initialTab === 'billing') return 'billing';
     if (initialTab === 'finances') return 'finances';
     if (initialTab === 'reviews') return 'reviews';
     if (initialTab === 'admin') return 'admin';
-    if (initialTab === 'patients') return 'patients';
-    if (initialTab === 'billing') return 'billing';
-    if (initialTab === 'reminders') return 'reminders';
     if (initialTab === 'support') return 'support';
-    return 'appointments';
+    if (initialTab === 'analytics' || initialTab === 'kpis') return 'analytics';
+    return 'analytics';
   });
 
   // Synchronize tabs whenever initialTab prop changes
   useEffect(() => {
     if (!initialTab) return;
-    if (initialTab === 'finances') {
+    if (initialTab === 'analytics' || initialTab === 'kpis') {
+      setStaffTab('analytics');
+      if (userProfile?.role === 'patient') {
+        window.history.replaceState({}, '', `/${activeClinic?.slug || 'revon-dental'}/dashboard`);
+      }
+    } else if (initialTab === 'appointments') {
+      setStaffTab('appointments');
+      setPatientTab('appointments');
+    } else if (initialTab === 'dashboard') {
+      setStaffTab(userProfile?.role === 'patient' ? 'appointments' : 'analytics');
+      setPatientTab('appointments');
+    } else if (initialTab === 'finances') {
       setStaffTab('finances');
       if (userProfile?.role === 'patient') {
         window.history.replaceState({}, '', `/${activeClinic?.slug || 'revon-dental'}/dashboard`);
@@ -721,16 +739,13 @@ export function Dashboard({
     } else if (initialTab === 'support') {
       setStaffTab('support');
       setPatientTab('support');
-    } else if (initialTab === 'appointments' || initialTab === 'dashboard') {
-      setStaffTab('appointments');
-      setPatientTab('appointments');
     }
   }, [initialTab, userProfile?.role, activeClinic?.slug]);
 
-  const handleStaffTabChange = (newTab: 'appointments' | 'reminders' | 'patients' | 'billing' | 'finances' | 'admin' | 'reviews' | 'support') => {
+  const handleStaffTabChange = (newTab: 'analytics' | 'appointments' | 'reminders' | 'patients' | 'billing' | 'finances' | 'admin' | 'reviews' | 'support') => {
     setStaffTab(newTab);
     setCurrentPage(1);
-    const targetSubPath = newTab === 'appointments' ? 'dashboard' : newTab;
+    const targetSubPath = newTab === 'appointments' ? 'appointments' : (newTab === 'analytics' ? 'analytics' : newTab);
     window.history.replaceState({}, '', `/${activeClinic?.slug || 'revon-dental'}/${targetSubPath}`);
   };
 
@@ -875,6 +890,9 @@ export function Dashboard({
       const feats = activeClinic?.features;
       const allowed: string[] = [];
 
+      if (permissions.finances?.includes(userProfile.role) || permissions.billing?.includes(userProfile.role) || isAdminOrSuper) {
+        allowed.push('analytics');
+      }
       if (feats?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || isAdminOrSuper)) {
         allowed.push('appointments');
       }
@@ -2253,6 +2271,11 @@ export function Dashboard({
     setEditingHandles(updated);
   };
 
+  const handleUpdateSocialName = (id: string, name: string) => {
+    const updated = editingHandles.map((handle) => (handle.id === id ? { ...handle, name } : handle));
+    setEditingHandles(updated);
+  };
+
   const handleToggleSocialActive = (id: string) => {
     const updated = editingHandles.map((handle) =>
       handle.id === id ? { ...handle, isActive: !handle.isActive } : handle
@@ -2262,7 +2285,7 @@ export function Dashboard({
     updateSocialHandles(updated).catch((e) => console.warn("Failed to auto-sync social toggle:", e));
   };
 
-  const handleAddSocialHandle = (platform: SocialHandle['platform'], customName?: string) => {
+  const handleAddSocialHandle = (platform: SocialHandle['platform'], customName?: string, customUrl?: string) => {
     const platformNames: Record<string, string> = {
       facebook: 'Facebook',
       instagram: 'Instagram',
@@ -2272,11 +2295,11 @@ export function Dashboard({
       whatsapp: 'WhatsApp',
       link: 'Custom Link'
     };
-    const name = customName || platformNames[platform] || 'Social Link';
+    const name = customName?.trim() || platformNames[platform] || 'Social Link';
     const newHandle: SocialHandle = {
       id: `${platform}_${Date.now()}`,
       name,
-      url: 'https://',
+      url: customUrl?.trim() || 'https://',
       isActive: true,
       platform
     };
@@ -3274,6 +3297,20 @@ export function Dashboard({
           
           {/* Clinic staff mini tab selector */}
           <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto no-scrollbar scroll-smooth pb-1">
+            {/* 1. Executive Analytics & KPIs Tab (First Tab) */}
+            {(permissions.finances?.includes(userProfile.role) || permissions.billing?.includes(userProfile.role) || isAdminOrSuper) && (
+              <button
+                id="staff-tab-analytics"
+                onClick={() => handleStaffTabChange('analytics')}
+                className={`pb-4 px-3 sm:px-6 font-bold text-xs border-b-2 cursor-pointer transition-all uppercase tracking-wider whitespace-nowrap flex-shrink-0 flex items-center space-x-1.5 ${
+                  staffTab === 'analytics' ? 'border-revon-blue text-revon-blue dark:text-teal-400 font-extrabold' : 'border-transparent text-slate-400 hover:text-revon-blue'
+                }`}
+              >
+                <BarChart3 className="h-3.5 w-3.5 text-revon-blue dark:text-teal-400" />
+                <span>Analytics & KPIs</span>
+              </button>
+            )}
+            {/* 2. Appointments Monitor */}
             {activeClinic?.features?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || isAdminOrSuper) && (
               <button
                 id="staff-tab-appointments"
@@ -3370,6 +3407,13 @@ export function Dashboard({
               </button>
             )}
           </div>
+
+          {/* TAB 0: EXECUTIVE ANALYTICS & KPIS PANEL (FIRST TAB) */}
+          {staffTab === 'analytics' && (permissions.finances?.includes(userProfile.role) || permissions.billing?.includes(userProfile.role) || isAdminOrSuper) && (
+            <div className="animate-fadeIn">
+              <ExecutiveAnalyticsDashboard userProfile={userProfile} onNavigateTab={handleStaffTabChange} />
+            </div>
+          )}
 
           {/* TAB 1: APPOINTMENTS PANEL */}
           {staffTab === 'appointments' && activeClinic?.features?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
@@ -5486,26 +5530,104 @@ export function Dashboard({
                     </div>
 
                     {/* Quick Add Platform Bar */}
-                    <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-500 font-mono uppercase tracking-wider mr-2">Add Handle:</span>
-                      {(['facebook', 'instagram', 'linkedin', 'youtube', 'twitter', 'whatsapp', 'link'] as const).map((plat) => (
-                        <button
-                          key={plat}
-                          type="button"
-                          onClick={() => handleAddSocialHandle(plat)}
-                          className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-revon-blue hover:text-revon-blue transition-all cursor-pointer flex items-center space-x-1 shadow-2xs"
-                        >
-                          <Plus className="h-3 w-3 text-revon-blue" />
-                          <span className="capitalize">{plat === 'twitter' ? 'X / Twitter' : plat}</span>
-                        </button>
-                      ))}
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                        <span className="text-xs font-bold text-slate-500 font-mono uppercase tracking-wider mr-2">Add Handle:</span>
+                        {(['facebook', 'instagram', 'linkedin', 'youtube', 'twitter', 'whatsapp', 'link'] as const).map((plat) => (
+                          <button
+                            key={plat}
+                            type="button"
+                            onClick={() => {
+                              if (plat === 'link') {
+                                setShowAddCustomLinkInput((prev) => !prev);
+                              } else {
+                                handleAddSocialHandle(plat);
+                              }
+                            }}
+                            className={`px-2.5 py-1 bg-white border rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center space-x-1 shadow-2xs ${
+                              plat === 'link' && showAddCustomLinkInput
+                                ? 'border-revon-blue text-revon-blue bg-revon-blue/5'
+                                : 'border-slate-200 text-slate-700 hover:border-revon-blue hover:text-revon-blue'
+                            }`}
+                          >
+                            <Plus className="h-3 w-3 text-revon-blue" />
+                            <span className="capitalize">{plat === 'twitter' ? 'X / Twitter' : plat === 'link' ? 'Custom Link' : plat}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Inline Form to add Custom Link with custom name */}
+                      {showAddCustomLinkInput && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-revon-blue/30 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Link className="h-3.5 w-3.5 text-revon-blue" />
+                              <span className="text-xs font-bold text-slate-800">Add Custom Handle with Name</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddCustomLinkInput(false);
+                                setNewCustomLinkName('');
+                                setNewCustomLinkUrl('');
+                              }}
+                              className="text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                Handle Name *
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Threads, Yelp, Practo, Blog, TikTok"
+                                value={newCustomLinkName}
+                                onChange={(e) => setNewCustomLinkName(e.target.value)}
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-revon-blue bg-white"
+                                autoFocus
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                URL
+                              </label>
+                              <input
+                                type="url"
+                                placeholder="https://..."
+                                value={newCustomLinkUrl}
+                                onChange={(e) => setNewCustomLinkUrl(e.target.value)}
+                                className="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-revon-blue bg-white"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const finalName = newCustomLinkName.trim() || 'Custom Link';
+                                handleAddSocialHandle('link', finalName, newCustomLinkUrl.trim() || 'https://');
+                                setNewCustomLinkName('');
+                                setNewCustomLinkUrl('');
+                                setShowAddCustomLinkInput(false);
+                              }}
+                              className="px-3 py-1.5 bg-revon-blue text-white rounded-lg text-xs font-bold hover:bg-revon-blue/90 transition-all cursor-pointer shadow-2xs flex items-center space-x-1"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Add {newCustomLinkName.trim() ? `"${newCustomLinkName.trim()}"` : 'Custom Link'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-4">
                       {editingHandles.map((handle) => (
                         <div key={handle.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-slate-50 hover:bg-slate-50/40 transition-all">
-                          <div className="flex items-center space-x-3 w-40 shrink-0">
-                            <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+                          <div className="flex items-center space-x-3 w-48 shrink-0">
+                            <div className="p-2 bg-slate-100 rounded-lg text-slate-600 shrink-0">
                               {handle.platform === 'facebook' && <Facebook className="h-4 w-4 text-blue-600" />}
                               {handle.platform === 'instagram' && <Instagram className="h-4 w-4 text-pink-600" />}
                               {handle.platform === 'linkedin' && <Linkedin className="h-4 w-4 text-blue-700" />}
@@ -5518,7 +5640,18 @@ export function Dashboard({
                               )}
                               {handle.platform === 'link' && <Link className="h-4 w-4 text-slate-600" />}
                             </div>
-                            <span className="font-bold text-xs text-slate-800 font-display">{handle.name}</span>
+                            {handle.platform === 'link' ? (
+                              <input
+                                type="text"
+                                placeholder="Custom Handle Name"
+                                value={handle.name}
+                                onChange={(e) => handleUpdateSocialName(handle.id, e.target.value)}
+                                className="w-full text-xs font-bold text-slate-800 font-display px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-revon-blue bg-white"
+                                title="Edit Custom Handle Name"
+                              />
+                            ) : (
+                              <span className="font-bold text-xs text-slate-800 font-display">{handle.name}</span>
+                            )}
                           </div>
 
                           <div className="flex-1 w-full">

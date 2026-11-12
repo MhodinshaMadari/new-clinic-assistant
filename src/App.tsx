@@ -180,6 +180,8 @@ function MainApp() {
         const subView = parts[1];
         if (subView === 'setup') setCurrentView('setup');
         else if (subView === 'dashboard') setCurrentView('dashboard');
+        else if (subView === 'appointments') setCurrentView('appointments');
+        else if (subView === 'analytics' || subView === 'kpis') setCurrentView('analytics');
         else if (subView === 'admin') setCurrentView('admin');
         else if (subView === 'reviews' || subView === 'patient-reviews') setCurrentView('reviews');
         else if (subView === 'finances' || subView === 'expenses' || subView === 'finances-expenses') setCurrentView('finances');
@@ -198,8 +200,8 @@ function MainApp() {
   // Whenever userProfile changes (e.g., after logging in) or currentView changes
   useEffect(() => {
     if (userProfile) {
-      // Security check: patients cannot access finances, reviews, or admin views
-      if (userProfile.role === 'patient' && (currentView === 'finances' || currentView === 'reviews' || currentView === 'admin')) {
+      // Security check: patients cannot access finances, reviews, admin, or analytics views
+      if (userProfile.role === 'patient' && (currentView === 'finances' || currentView === 'reviews' || currentView === 'admin' || currentView === 'analytics')) {
         const targetSlug = userProfile.clinicSlug || activeClinic?.slug || 'revon-dental';
         setCurrentView('dashboard');
         const newPath = `/${targetSlug}/dashboard`;
@@ -360,14 +362,14 @@ function MainApp() {
               <>
                 {currentView === 'clinic-search' && <ClinicPortfolioFallback onNavigate={handleNavigate} />}
                 {currentView === 'portfolio' && <LandingPage onNavigate={handleNavigate} />}
-                {(['dashboard', 'admin', 'finances', 'reviews', 'billing', 'patients', 'reminders', 'support'].includes(currentView)) && (
+                {(['dashboard', 'appointments', 'admin', 'finances', 'analytics', 'reviews', 'billing', 'patients', 'reminders', 'support'].includes(currentView)) && (
                   user ? (
                     <Dashboard
                       key="persistent-clinic-dashboard"
                       initialTab={
-                        currentView === 'dashboard' || (userProfile?.role === 'patient' && ['finances', 'reviews', 'admin'].includes(currentView))
-                          ? undefined
-                          : currentView
+                        userProfile?.role === 'patient'
+                          ? (['finances', 'reviews', 'admin', 'analytics'].includes(currentView) ? 'appointments' : (currentView === 'dashboard' ? 'appointments' : currentView))
+                          : (currentView === 'dashboard' ? 'analytics' : currentView)
                       }
                       onNavigate={handleNavigate}
                     />

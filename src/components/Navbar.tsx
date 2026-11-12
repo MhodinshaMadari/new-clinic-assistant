@@ -3,7 +3,7 @@ import { APP_NAME } from '../config/appConfig';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useClinic } from '../context/ClinicContext';
-import { LogIn, LogOut, User, Calendar, Menu, X, LayoutDashboard, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, PartyPopper, Activity, TrendingUp, Star } from 'lucide-react';
+import { LogIn, LogOut, User, Calendar, Menu, X, LayoutDashboard, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, PartyPopper, Activity, TrendingUp, Star, BarChart3 } from 'lucide-react';
 import { RevonLogo } from './RevonLogo';
 import { FestivalDecorModal } from './FestivalDecorModal';
 import { FestivalLogoWrapper, FestivalTitleCompanion, FestivalNavbarBorder } from './FestivalHeaderDecor';
@@ -159,7 +159,7 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
           <div className="flex items-center gap-4">
             <button 
               id="brand-logo-btn"
-              onClick={() => handleNav(user ? 'dashboard' : (currentView === 'clinic-search' ? 'clinic-search' : 'portfolio'))}
+              onClick={() => handleNav(user ? (userProfile?.role === 'patient' ? 'dashboard' : 'analytics') : (currentView === 'clinic-search' ? 'clinic-search' : 'portfolio'))}
               className="flex items-center gap-2.5 cursor-pointer focus:outline-none relative group"
             >
               <FestivalLogoWrapper>
@@ -193,9 +193,9 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
               {user && (
                 <button
                   id="nav-dashboard-btn"
-                  onClick={() => handleNav('dashboard')}
+                  onClick={() => handleNav(userProfile?.role === 'patient' ? 'dashboard' : 'appointments')}
                   className={`text-xs font-bold transition-colors cursor-pointer flex items-center space-x-1.5 ${
-                    currentView === 'dashboard' 
+                    currentView === 'appointments' || (currentView === 'dashboard' && userProfile?.role === 'patient')
                       ? 'text-revon-blue dark:text-revon-teal border-b-2 border-revon-teal pb-1' 
                       : 'text-slate-500 dark:text-slate-400 hover:text-revon-blue dark:hover:text-revon-teal'
                   }`}
@@ -208,18 +208,6 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
           </div>
 
           <div className="hidden md:flex items-center space-x-3">
-            {/* Festival Effects Button for Admin & Super-Admin */}
-            {isAdmin && (
-              <button
-                id="nav-festival-decor-btn"
-                onClick={() => setShowFestivalModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold cursor-pointer transition-all"
-                title="Configure Festival Decorative Graphic Effects"
-              >
-                <PartyPopper className="h-4 w-4 text-amber-500 animate-pulse" />
-                <span>Festival Decor</span>
-              </button>
-            )}
 
             {/* Theme Toggle Button */}
             <button
@@ -545,10 +533,20 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
                 Clinic Portfolio
               </button>
             )}
+            {user && userProfile?.role !== 'patient' && (
+              <button
+                id="mob-analytics-btn"
+                onClick={() => handleNav('analytics')}
+                className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-revon-blue dark:hover:text-revon-teal"
+              >
+                <BarChart3 className="h-4 w-4 text-revon-blue dark:text-teal-400" />
+                <span>Executive Analytics & KPIs</span>
+              </button>
+            )}
             {user && (
               <button
                 id="mob-dashboard-btn"
-                onClick={() => handleNav('dashboard')}
+                onClick={() => handleNav(userProfile?.role === 'patient' ? 'dashboard' : 'appointments')}
                 className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-revon-blue dark:hover:text-revon-teal"
               >
                 <Activity className="h-4 w-4 text-revon-blue dark:text-revon-teal" />

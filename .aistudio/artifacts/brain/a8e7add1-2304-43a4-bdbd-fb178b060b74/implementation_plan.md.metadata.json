@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan for two high-value clinic assistant features: (1) Post-Op Care Instruction Dispatcher with WhatsApp templates integrated directly into the Appointments view, and (2) Real-time Clinic Live Status & Doctor Availability Quick-Toggle Bar managed by all non-patient staff and broadcasted live to the Clinic Portfolio.",
-  "updatedAt":  "2026-11-11T08:42:52.027861045Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
