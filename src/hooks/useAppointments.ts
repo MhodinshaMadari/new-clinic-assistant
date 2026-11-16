@@ -17,6 +17,7 @@ import { db } from '../firebase';
 import { Appointment, AppointmentStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useClinic } from '../context/ClinicContext';
+import { matchesClinicScope } from '../utils/clinicDoctorScope';
 import QRCode from 'qrcode';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
@@ -86,6 +87,8 @@ export function useAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const activeClinicId = activeClinic?.id;
+
   useEffect(() => {
     if (!userProfile) {
       setAppointments([]);
@@ -100,8 +103,7 @@ export function useAppointments() {
       const list: Appointment[] = [];
       snapshot.forEach((docSnap) => {
         const app = { id: docSnap.id, ...docSnap.data() } as Appointment;
-        const itemSlug = app.clinicSlug || 'revon-dental';
-        if (itemSlug === activeSlug) {
+        if (matchesClinicScope(app, activeSlug, activeClinicId)) {
           list.push(app);
         }
       });
@@ -115,7 +117,7 @@ export function useAppointments() {
     });
 
     return () => unsubscribe();
-  }, [userProfile, activeSlug, isSuperAdmin]);
+  }, [userProfile, activeSlug, activeClinicId, isSuperAdmin]);
 
   const createAppointment = async (data: Omit<Appointment, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {

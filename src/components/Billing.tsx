@@ -18,6 +18,14 @@ import { Invoice, InvoiceItem, UserProfile, Appointment, PaymentRecord, BillPaym
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { buildInvoicePrintPayload, PrintDocumentPayload } from '../utils/printService';
+import {
+  filterClinicRegisteredDoctors,
+  findRegisteredDoctorMatch,
+  isPractitionerRole,
+  matchesClinicScope
+} from '../utils/clinicDoctorScope';
 import { 
   Plus, Trash2, Download, Printer, Search, Filter, 
   CheckCircle, Clock, AlertCircle, FileText, ChevronDown, User, Calendar, RefreshCw, X,
@@ -189,7 +197,9 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
   const [patientName, setPatientName] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
-  const [dentistName, setDentistName] = useState(userProfile?.role === 'dentist' ? (userProfile?.displayName || '') : '');
+  const [dentistName, setDentistName] = useState(
+    isPractitionerRole(userProfile?.role) ? (userProfile?.displayName || '') : ''
+  );
   const [treatmentName, setTreatmentName] = useState('');
   const [status, setStatus] = useState<'pending' | 'collected'>('pending');
   
@@ -215,6 +225,7 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
   const [collectAmount, setCollectAmount] = useState<string>('');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [deleteConfirmInvoiceId, setDeleteConfirmInvoiceId] = useState<string | null>(null);
+  const [printPreviewDoc, setPrintPreviewDoc] = useState<PrintDocumentPayload | null>(null);
 
   // Firestore error handler helper
   function handleFirestoreError(err: unknown, op: OperationType, path: string | null) {
@@ -232,7 +243,9 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
     setError(`Database operation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
 
-  // Load invoices, appointments, patients, and dentists
+  const activeClinicId = activeClinic?.id;
+
+  // Load invoices, appointments, patients, and registered clinic practitioners in real-time
   useEffect(() => {
     setLoading(true);
     const invoicesRef = collection(db, 'invoices');
@@ -240,8 +253,7 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
       const list: Invoice[] = [];
       snapshot.forEach((d) => {
         const inv = { id: d.id, ...d.data() } as Invoice;
-        const itemSlug = inv.clinicSlug || 'revon-dental';
-        if (itemSlug === activeSlug) {
+        if (matchesClinicScope(inv, activeSlug, activeClinicId)) {
           list.push(inv);
         }
       });
@@ -254,44 +266,41 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
       setLoading(false);
     });
 
-    // Fetch supporting lists
-    const fetchSupportData = async () => {
-      try {
-        const apptsSnap = await getDocs(collection(db, 'appointments'));
-        const apptsList: Appointment[] = [];
-        apptsSnap.forEach((d) => {
-          const app = { id: d.id, ...d.data() } as Appointment;
-          const itemSlug = app.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) {
-            apptsList.push(app);
-          }
-        });
-        setAppointments(apptsList);
+    const unsubAppts = onSnapshot(collection(db, 'appointments'), (apptsSnap) => {
+      const apptsList: Appointment[] = [];
+      apptsSnap.forEach((d) => {
+        const app = { id: d.id, ...d.data() } as Appointment;
+        if (matchesClinicScope(app, activeSlug, activeClinicId)) {
+          apptsList.push(app);
+        }
+      });
+      setAppointments(apptsList);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'appointments');
+    });
 
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const patList: UserProfile[] = [];
-        const dentList: UserProfile[] = [];
-        usersSnap.forEach((d) => {
-          const u = d.data() as UserProfile;
-          const itemSlug = u.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) {
-            if (u.role === 'patient') patList.push(u);
-            if (u.role === 'dentist') dentList.push(u);
-          }
-        });
-        setPatients(patList);
-        setDentists(dentList);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.GET, 'users/appointments');
-      }
-    };
-
-    fetchSupportData();
+    const unsubUsers = onSnapshot(collection(db, 'users'), (usersSnap) => {
+      const rawUsers: UserProfile[] = [];
+      const patList: UserProfile[] = [];
+      usersSnap.forEach((d) => {
+        const u = { uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) };
+        rawUsers.push(u);
+        if (u.role === 'patient' && matchesClinicScope(u, activeSlug, activeClinicId)) {
+          patList.push(u);
+        }
+      });
+      setPatients(patList);
+      setDentists(filterClinicRegisteredDoctors(rawUsers, activeSlug, activeClinicId));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'users');
+    });
 
     return () => {
       unsubInvoices();
+      unsubAppts();
+      unsubUsers();
     };
-  }, [activeSlug, isSuperAdmin]);
+  }, [activeSlug, activeClinicId, isSuperAdmin]);
 
   // Sync details when an appointment is selected
   useEffect(() => {
@@ -396,6 +405,16 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
         collectedBy: collectorName
       }] : [];
 
+      const matchedPractitioner = findRegisteredDoctorMatch(
+        dentists,
+        selectedAppointment?.dentistId,
+        dentistName
+      );
+      const resolvedDentistId =
+        matchedPractitioner?.uid || selectedAppointment?.dentistId || auth.currentUser?.uid || 'manual';
+      const resolvedDentistName =
+        matchedPractitioner?.displayName || dentistName || userProfile?.displayName || 'Doctor';
+
       const invoiceData = sanitizeFirestoreData({
         invoiceNumber,
         appointmentId: selectedAppointment?.id || 'manual',
@@ -403,8 +422,8 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
         patientName: patientName.trim(),
         patientEmail: patientEmail.trim() || `${patientName.toLowerCase().replace(/\s+/g, '')}@example.com`,
         patientPhone: patientPhone.trim(),
-        dentistId: selectedAppointment?.dentistId || auth.currentUser?.uid || 'manual',
-        dentistName: dentistName || userProfile?.displayName || 'Doctor',
+        dentistId: resolvedDentistId,
+        dentistName: resolvedDentistName,
         treatmentName: treatmentName || 'General Consultation',
         items: lineItems,
         subtotal,
@@ -414,7 +433,8 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
         remainingAmount: initialRemaining,
         payments: initialPayments,
         status,
-        clinicSlug: activeClinic?.slug || 'revon-dental',
+        clinicSlug: activeSlug,
+        clinicId: activeClinicId,
         createdAt: new Date().toISOString(),
         ...(status === 'collected' ? {
           paymentMode: 'Cash',
@@ -433,8 +453,8 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
             patientId: matchedPatientId,
             patientName: patientName.trim(),
             patientEmail: patientEmail.trim(),
-            dentistId: selectedAppointment.dentistId || userProfile?.uid || 'manual',
-            dentistName: dentistName || userProfile?.displayName || 'Doctor',
+            dentistId: resolvedDentistId,
+            dentistName: resolvedDentistName,
             treatmentName: treatmentName || 'General Consultation',
             items: lineItems,
             subtotal,
@@ -444,7 +464,8 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
             remainingAmount: initialRemaining,
             payments: initialPayments,
             status,
-            clinicSlug: activeClinic?.slug || 'revon-dental',
+            clinicSlug: activeSlug,
+            clinicId: activeClinicId,
             createdAt: new Date().toISOString(),
             ...(status === 'collected' ? {
               paymentMode: 'Cash',
@@ -904,358 +925,23 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
     docInstance.save(`${APP_NAME.replace(/\s+/g, '_')}_Invoice_${invoice.invoiceNumber}.pdf`);
   };
 
-  // Standard Print Preview and Print Command
+  // Unified In-App A4 Clinical Stationery Print Preview & PDF Export
   const handlePrintHTML = (invoice: Invoice) => {
-    const invoiceClinic = (clinics || []).find(c => c.slug === invoice.clinicSlug || c.id === invoice.clinicSlug) || activeClinic;
-    const logoToUse = invoiceClinic?.logoUrl || mainLogo;
-    const clinicNameToUse = invoiceClinic?.name || APP_NAME;
+    const invoiceClinic =
+      (clinics || []).find(
+        (c) => c.slug === invoice.clinicSlug || c.id === invoice.clinicSlug
+      ) || activeClinic;
+    const matchedAppt = appointments.find((a) => a.id === invoice.appointmentId) || null;
 
-    // Generate clean print window structure
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("Popup blocked! Please allow popups to print the invoice.");
-      return;
-    }
-
-    const itemsHTML = invoice.items.map(item => `
-      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px;">
-        <td style="padding: 10px; text-align: left; color: #1e293b;">${item.name}</td>
-        <td style="padding: 10px; text-align: left; text-transform: capitalize; color: #64748b;">${item.type}</td>
-        <td style="padding: 10px; text-align: center; color: #1e293b;">${item.quantity}</td>
-        <td style="padding: 10px; text-align: right; color: #1e293b;">₹${item.unitPrice.toLocaleString()}</td>
-        <td style="padding: 10px; text-align: right; font-weight: bold; color: #1e293b;">₹${item.total.toLocaleString()}</td>
-      </tr>
-    `).join('');
-
-    const alreadyPaid = invoice.paidAmount !== undefined 
-      ? invoice.paidAmount 
-      : (invoice.payments?.reduce((s, p) => s + p.amount, 0) ?? (invoice.status === 'collected' ? invoice.totalAmount : 0));
-    const remainingDue = invoice.remainingAmount !== undefined 
-      ? invoice.remainingAmount 
-      : Math.max(0, invoice.totalAmount - alreadyPaid);
-
-    const invoiceStatusBadge = invoice.status === 'collected'
-      ? `<span style="background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">Paid (${invoice.paymentMode || 'Settled'})</span>`
-      : invoice.status === 'partially_paid'
-      ? `<span style="background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">Partially Paid (Due ₹${remainingDue.toLocaleString()})</span>`
-      : `<span style="background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">Payment Pending</span>`;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${clinicNameToUse} Invoice - ${invoice.invoiceNumber}</title>
-          <style>
-            @media print {
-              @page {
-                size: A4;
-                margin: 15mm;
-              }
-              body {
-                background-color: #ffffff;
-                color: #000000;
-              }
-            }
-            body {
-              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-              margin: 0;
-              padding: 0;
-              color: #1e293b;
-              background-color: #f8fafc;
-            }
-            .a4-container {
-              max-width: 800px;
-              margin: 30px auto;
-              background: #ffffff;
-              padding: 40px;
-              border: 1px solid #e2e8f0;
-              border-radius: 12px;
-              box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
-            }
-            @media print {
-              .a4-container {
-                border: none;
-                box-shadow: none;
-                margin: 0;
-                padding: 0;
-              }
-              .no-print {
-                display: none;
-              }
-            }
-            .header-bar {
-              height: 5px;
-              background-color: #1e88e5;
-              border-radius: 6px 6px 0 0;
-              margin-bottom: 25px;
-            }
-            .logo-section {
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              border-bottom: 2px solid #e2e8f0;
-              padding-bottom: 20px;
-              margin-bottom: 25px;
-            }
-            .logo-placeholder {
-              display: flex;
-              align-items: center;
-              gap: 12px;
-            }
-            .logo-icon {
-              width: 40px;
-              height: 40px;
-              background: #1e88e5;
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              color: #ffffff;
-              font-weight: bold;
-              font-size: 20px;
-            }
-            .brand-name {
-              font-size: 24px;
-              font-weight: 800;
-              color: #1e293b;
-              letter-spacing: -0.5px;
-            }
-            .brand-sub {
-              font-size: 10px;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-              color: #26a69a;
-              font-weight: 700;
-              margin-top: 2px;
-            }
-            .meta-info {
-              text-align: right;
-              font-size: 14px;
-              color: #475569;
-            }
-            .meta-row {
-              margin-bottom: 4px;
-            }
-            .meta-val {
-              font-weight: bold;
-              color: #1e293b;
-            }
-            .detail-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 30px;
-              background-color: #f8fafc;
-              border: 1px solid #f1f5f9;
-              border-radius: 8px;
-              padding: 20px;
-              margin-bottom: 30px;
-            }
-            .detail-title {
-              font-size: 11px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              color: #1e88e5;
-              font-weight: bold;
-              margin-bottom: 8px;
-            }
-            .detail-name {
-              font-size: 16px;
-              font-weight: bold;
-              color: #0f172a;
-              margin-bottom: 4px;
-            }
-            .detail-val {
-              font-size: 13px;
-              color: #475569;
-              line-height: 1.5;
-            }
-            .table-styled {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 30px;
-            }
-            .table-header {
-              background-color: #f1f5f9;
-              font-size: 11px;
-              text-transform: uppercase;
-              color: #475569;
-              font-weight: bold;
-            }
-            .table-header th {
-              padding: 12px 10px;
-            }
-            .summary-section {
-              display: flex;
-              justify-content: flex-end;
-              margin-top: 20px;
-            }
-            .summary-card {
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 15px;
-              width: 250px;
-              font-size: 14px;
-            }
-            .summary-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 8px;
-              color: #475569;
-            }
-            .grand-total {
-              border-top: 2px solid #f1f5f9;
-              padding-top: 10px;
-              margin-top: 10px;
-              font-size: 16px;
-              font-weight: bold;
-              color: #1e88e5;
-            }
-            .footer-section {
-              border-top: 1px solid #e2e8f0;
-              margin-top: 40px;
-              padding-top: 15px;
-              text-align: center;
-              font-size: 12px;
-              color: #94a3b8;
-              font-style: italic;
-            }
-            .print-btn-bar {
-              background-color: #0f172a;
-              padding: 12px 20px;
-              display: flex;
-              justify-content: flex-end;
-              gap: 10px;
-              border-radius: 8px;
-              max-width: 800px;
-              margin: 20px auto 0 auto;
-            }
-            .btn {
-              padding: 8px 16px;
-              border-radius: 6px;
-              font-weight: bold;
-              font-size: 13px;
-              cursor: pointer;
-              border: none;
-            }
-            .btn-primary {
-              background-color: #1e88e5;
-              color: #ffffff;
-            }
-            .btn-secondary {
-              background-color: #334155;
-              color: #ffffff;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-btn-bar no-print">
-            <button class="btn btn-secondary" onclick="window.close()">Cancel</button>
-            <button class="btn btn-primary" onclick="window.print()">Print Invoice</button>
-          </div>
-
-          <div class="a4-container">
-            <div class="header-bar"></div>
-            <div class="logo-section">
-              <div style="display: flex; align-items: center; gap: 15px;">
-                <img src="${logoToUse}" style="height: 55px; width: auto; max-width: 180px; object-fit: contain; border-radius: 6px;" alt="${clinicNameToUse}" />
-                <span style="font-size: 22px; font-weight: bold; color: #0b52a3; font-family: sans-serif;">${clinicNameToUse}</span>
-              </div>
-              <div class="meta-info">
-                <div class="meta-row">Invoice Number: <span class="meta-val">${invoice.invoiceNumber}</span></div>
-                <div class="meta-row">Created Date: <span class="meta-val">${new Date(invoice.createdAt).toLocaleDateString('en-GB')}</span></div>
-              </div>
-            </div>
-
-            <div class="detail-grid">
-              <div>
-                <div class="detail-title">Patient / Billed To</div>
-                <div class="detail-name">${invoice.patientName}</div>
-                <div class="detail-val">Email: ${invoice.patientEmail}</div>
-                <div class="detail-val">Phone: ${invoice.patientPhone || 'N/A'}</div>
-              </div>
-              <div>
-                <div class="detail-title">Attending Clinician</div>
-                <div class="detail-name">${invoice.dentistName}</div>
-                <div class="detail-val">Procedure: ${invoice.treatmentName}</div>
-                <div class="detail-val" style="margin-top: 8px;">${invoiceStatusBadge}</div>
-              </div>
-            </div>
-
-            <table class="table-styled">
-              <thead>
-                <tr class="table-header">
-                  <th style="text-align: left; padding: 12px 10px;">Item Description</th>
-                  <th style="text-align: left; padding: 12px 10px;">Type</th>
-                  <th style="text-align: center; padding: 12px 10px;">Qty</th>
-                  <th style="text-align: right; padding: 12px 10px;">Unit Price</th>
-                  <th style="text-align: right; padding: 12px 10px;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHTML}
-              </tbody>
-            </table>
-
-            <div class="summary-section">
-              <div class="summary-card">
-                <div class="summary-row">
-                  <span>Subtotal</span>
-                  <span style="font-weight: bold; color: #1e293b;">₹${invoice.subtotal.toLocaleString()}</span>
-                </div>
-                <div class="summary-row">
-                  <span>Tax / GST (10%)</span>
-                  <span style="font-weight: bold; color: #1e293b;">₹${invoice.tax.toLocaleString()}</span>
-                </div>
-                <div class="summary-row grand-total">
-                  <span>Grand Total</span>
-                  <span>₹${invoice.totalAmount.toLocaleString()}</span>
-                </div>
-                ${alreadyPaid > 0 ? `
-                <div class="summary-row" style="margin-top: 6px; color: #059669; font-weight: 600;">
-                  <span>Paid Amount</span>
-                  <span>₹${alreadyPaid.toLocaleString()}</span>
-                </div>
-                <div class="summary-row" style="margin-top: 4px; color: ${remainingDue > 0 ? '#d97706' : '#059669'}; font-weight: 700;">
-                  <span>Balance Due</span>
-                  <span>₹${remainingDue.toLocaleString()}</span>
-                </div>
-                ` : ''}
-              </div>
-            </div>
-
-            ${invoice.payments && invoice.payments.length > 0 ? `
-              <div style="margin-top: 25px;">
-                <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #475569; margin-bottom: 8px; letter-spacing: 0.5px;">Payment Installments History</div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                  <thead>
-                    <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 11px;">
-                      <th style="padding: 6px 8px; text-align: left;">Date</th>
-                      <th style="padding: 6px 8px; text-align: left;">Mode</th>
-                      <th style="padding: 6px 8px; text-align: left;">Reference / Notes</th>
-                      <th style="padding: 6px 8px; text-align: right;">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${invoice.payments.map(p => `
-                      <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 6px 8px;">${new Date(p.paymentDate).toLocaleDateString('en-GB')}</td>
-                        <td style="padding: 6px 8px;">${p.paymentMode}</td>
-                        <td style="padding: 6px 8px; color: #64748b;">${p.notes || '-'}</td>
-                        <td style="padding: 6px 8px; text-align: right; font-weight: bold;">₹${p.amount.toLocaleString()}</td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
-              </div>
-            ` : ''}
-
-            <div class="footer-section">
-              Care Beyond Smiles • Thank you for your visit to REVON!
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    const payload = buildInvoicePrintPayload({
+      invoice,
+      appointment: matchedAppt,
+      clinic: invoiceClinic,
+      fallbackName: APP_NAME,
+      fallbackLogo: mainLogo,
+      preparedBy: userProfile?.displayName || userProfile?.email || 'Billing Desk'
+    });
+    setPrintPreviewDoc(payload);
   };
 
   // Pagination state for invoices
@@ -1601,13 +1287,15 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Attending Dentist *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Attending Clinician *</label>
                   <select
                     value={dentistName}
                     onChange={(e) => setDentistName(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-revon-blue cursor-pointer"
                   >
-                    <option value="">-- Select Clinician --</option>
+                    <option value="">
+                      {dentists.length === 0 ? '-- No Practitioners Registered in Clinic --' : '-- Select Clinician --'}
+                    </option>
                     {dentists.map((d) => (
                       <option key={d.uid} value={d.displayName}>{d.displayName}</option>
                     ))}
@@ -2074,6 +1762,11 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
           </MuiButton>
         </DialogActions>
       </Dialog>
+
+      <PrintPreviewModal
+        documentData={printPreviewDoc}
+        onClose={() => setPrintPreviewDoc(null)}
+      />
     </div>
   );
 }

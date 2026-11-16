@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useClinic } from '../context/ClinicContext';
 import { useClinicData } from '../hooks/useClinicData';
 import { useAuth } from '../context/AuthContext';
+import { getDefaultPractitionerSpecialty, isPractitionerRole, matchesClinicScope } from '../utils/clinicDoctorScope';
 import { 
   ClinicLiveStatus, 
   DoctorAvailabilityStatus, 
@@ -34,7 +35,7 @@ import {
 
 export function ClinicLiveStatusBar() {
   const { activeClinic, updateClinic } = useClinic();
-  const { dentists, surgeons } = useClinicData();
+  const { dentists } = useClinicData();
   const { userProfile } = useAuth();
 
   const [isUpdating, setIsUpdating] = useState(false);
@@ -73,38 +74,27 @@ export function ClinicLiveStatusBar() {
 
   const activeSlug = activeClinic?.slug || 'revon-dental';
 
-  // Compile full list of doctors/dentists strictly scoped to the active clinic
+  // Compile full list of doctors strictly scoped to registered practitioner accounts for the active clinic
   const doctorsList = useMemo(() => {
     const list: { id: string; name: string; specialty: string; clinicSlug?: string }[] = [];
-    
-    // Add dentists strictly scoped to active clinic
-    dentists.forEach(d => {
-      const docSlug = d.clinicSlug || 'revon-dental';
-      if (docSlug === activeSlug && !list.some(item => item.id === d.uid)) {
+
+    dentists.forEach((d) => {
+      if (
+        isPractitionerRole(d.role) &&
+        matchesClinicScope(d, activeSlug, activeClinic?.id) &&
+        !list.some((item) => item.id === d.uid)
+      ) {
         list.push({
           id: d.uid,
-          name: d.displayName || 'Dentist',
-          specialty: d.specialty || 'General Dental Practitioner',
-          clinicSlug: docSlug
-        });
-      }
-    });
-
-    // Add surgeons strictly scoped to active clinic
-    surgeons.forEach(s => {
-      const docSlug = s.clinicSlug || 'revon-dental';
-      if (s.isActive && docSlug === activeSlug && !list.some(item => item.id === s.id)) {
-        list.push({
-          id: s.id,
-          name: s.displayName,
-          specialty: s.specialty || 'Dental Surgeon',
-          clinicSlug: docSlug
+          name: d.displayName || 'Registered Practitioner',
+          specialty: d.specialty || getDefaultPractitionerSpecialty(d.role),
+          clinicSlug: d.clinicSlug || activeSlug
         });
       }
     });
 
     return list;
-  }, [dentists, surgeons, activeSlug]);
+  }, [dentists, activeSlug, activeClinic?.id]);
 
   // Format Helper: Get time string e.g. "02:30 PM" from Date
   const formatTimeDisplay = (date: Date): string => {
@@ -752,9 +742,9 @@ export function ClinicLiveStatusBar() {
           {doctorsList.length === 0 ? (
             <div className="p-6 text-center rounded-2xl bg-slate-50 dark:bg-slate-850/50 border border-dashed border-slate-200 dark:border-slate-800 text-xs text-slate-500">
               <User className="h-8 w-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-              <p className="font-semibold text-slate-700 dark:text-slate-300">No Specialists Configured for this Clinic Scope</p>
+              <p className="font-semibold text-slate-700 dark:text-slate-300">No Practitioners Registered to this Clinic</p>
               <p className="text-[11px] text-slate-400 mt-1">
-                Add specialists in the Team Manager tab under Admin Portal to manage their chairside availability here.
+                Register practitioner accounts (Dentist, Doctor, or Specialist) under Registered Users in Admin Portal to manage chairside availability here.
               </p>
             </div>
           ) : (

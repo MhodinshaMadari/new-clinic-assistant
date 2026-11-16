@@ -35,6 +35,10 @@ import {
 import { Appointment, Bill, BillingItem, Invoice, InvoiceItem, UserProfile, PaymentRecord, BillPaymentStatus } from '../types';
 import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
+// @ts-ignore
+import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { buildClinicLetterhead, PrintDocumentPayload } from '../utils/printService';
 
 // Helper to recursively remove undefined values from Firestore payloads
 const sanitizeFirestoreData = (data: any): any => {
@@ -123,6 +127,7 @@ export function AppointmentBillModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printPreviewDoc, setPrintPreviewDoc] = useState<PrintDocumentPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Initialize or re-populate when appointment / existingBill changes
@@ -271,6 +276,67 @@ export function AppointmentBillModal({
         ? 'partially_paid' 
         : status;
 
+  const handleOpenA4PrintModal = () => {
+    if (!appointment) return;
+    const letterhead = buildClinicLetterhead(
+      activeClinic,
+      appointment.clinicName || 'Revon Dental Clinic',
+      mainLogo
+    );
+    const docNumber =
+      existingInvoice?.invoiceNumber ||
+      `BILL-${appointment.id.substring(0, 8).toUpperCase()}`;
+
+    setPrintPreviewDoc({
+      type: 'invoice',
+      fileName: `${letterhead.clinicSlug}_Receipt_${docNumber}.pdf`.replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_'
+      ),
+      documentTitle: existingInvoice
+        ? 'Tax Invoice & Treatment Receipt'
+        : 'Treatment Bill & Payment Receipt',
+      documentNumber: docNumber,
+      issueDate: new Date().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }),
+      clinic: letterhead,
+      status: effectiveStatus,
+      paymentModeLabel: paymentMode || 'Cash / UPI',
+      patientName: appointment.patientName,
+      patientPhone: appointment.patientPhone || undefined,
+      patientEmail: appointment.patientEmail || undefined,
+      dentistName: appointment.dentistName || 'Dr. Specialist',
+      treatmentName: appointment.treatment || 'Dental Consultation & Treatment',
+      appointmentDate: appointment.dateTime
+        ? new Date(appointment.dateTime).toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          })
+        : undefined,
+      items: items.map((it) => ({
+        name: it.name,
+        category: it.type || 'procedure',
+        quantity: Number(it.quantity) || 1,
+        unitPrice: Number(it.unitPrice) || 0,
+        total: Number(it.total) || 0
+      })),
+      subtotal,
+      tax,
+      taxLabel: `GST / Tax (${taxPercent}%)`,
+      discount: discountAmount,
+      totalAmount,
+      paidAmount: totalPaid,
+      remainingAmount,
+      payments,
+      notes: notes || undefined,
+      preparedBy: effectiveUserProfile?.displayName || effectiveUserProfile?.email || 'Clinic Billing Desk'
+    });
+  };
+
   // Add Item
   const handleAddItem = (preset?: { name: string; type: string; price: number }) => {
     const name = preset ? preset.name : newItemName.trim();
@@ -394,6 +460,7 @@ export function AppointmentBillModal({
     setErrorMessage(null);
 
     const clinicSlug = appointment.clinicSlug || activeClinic?.slug || 'revon-dental';
+    const clinicId = appointment.clinicId || activeClinic?.id;
     const nowIso = new Date().toISOString();
 
     const finalPaid = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
@@ -411,6 +478,7 @@ export function AppointmentBillModal({
       id: appointment.id,
       appointmentId: appointment.id,
       clinicSlug,
+      ...(clinicId ? { clinicId } : {}),
       patientId: appointment.patientId || '',
       patientName: appointment.patientName || '',
       patientEmail: appointment.patientEmail || '',
@@ -456,6 +524,7 @@ export function AppointmentBillModal({
       const invoicePayload = sanitizeFirestoreData({
         appointmentId: appointment.id,
         clinicSlug,
+        ...(clinicId ? { clinicId } : {}),
         patientId: appointment.patientId || '',
         patientName: appointment.patientName || '',
         patientEmail: appointment.patientEmail || `${(appointment.patientName || 'patient').toLowerCase().replace(/\s+/g, '')}@example.com`,
@@ -600,12 +669,12 @@ export function AppointmentBillModal({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {(existingBill || existingInvoice) && (
+            {(existingBill || existingInvoice || items.length > 0) && (
               <button
                 type="button"
-                onClick={() => setShowPrintPreview(!showPrintPreview)}
+                onClick={handleOpenA4PrintModal}
                 className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-                title="Print Preview / Receipt"
+                title="Open A4 Print Preview & PDF"
               >
                 <Printer className="h-4 w-4" />
               </button>
@@ -773,7 +842,7 @@ export function AppointmentBillModal({
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={handleOpenA4PrintModal}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <Printer className="h-3.5 w-3.5" />
@@ -1387,6 +1456,11 @@ export function AppointmentBillModal({
         </div>
 
       </div>
+
+      <PrintPreviewModal
+        documentData={printPreviewDoc}
+        onClose={() => setPrintPreviewDoc(null)}
+      />
     </div>
   );
 }

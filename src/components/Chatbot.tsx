@@ -18,6 +18,7 @@ import { useAuth } from "../context/AuthContext";
 import { useClinic } from "../context/ClinicContext";
 import { useAppointments } from "../hooks/useAppointments";
 import { useClinicData } from "../hooks/useClinicData";
+import { matchesClinicScope, findRegisteredDoctorMatch } from "../utils/clinicDoctorScope";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -36,7 +37,7 @@ export function Chatbot() {
   const { userProfile } = useAuth();
   const { activeClinic } = useClinic();
   const { createAppointment } = useAppointments();
-  const { surgeons } = useClinicData();
+  const { dentists, surgeons } = useClinicData();
 
   // Floating panel visibility
   const [isOpen, setIsOpen] = useState(false);
@@ -66,8 +67,9 @@ export function Chatbot() {
     }
 
     const activeSlug = activeClinic?.slug || 'revon-dental';
+    const activeClinicId = activeClinic?.id;
 
-    // Subscribe to active appointments
+    // Subscribe to active appointments (strict clinic scope)
     const appQuery = query(
       collection(db, "appointments"),
       where("patientId", "==", userProfile.uid)
@@ -76,15 +78,14 @@ export function Chatbot() {
       const list: any[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        const itemSlug = data.clinicSlug || 'revon-dental';
-        if (itemSlug === activeSlug) {
+        if (matchesClinicScope(data, activeSlug, activeClinicId)) {
           list.push({ id: doc.id, ...data });
         }
       });
       setUserAppointments(list);
     });
 
-    // Subscribe to bills
+    // Subscribe to bills (strict clinic scope)
     const billsQuery = query(
       collection(db, "bills"),
       where("patientId", "==", userProfile.uid)
@@ -93,8 +94,7 @@ export function Chatbot() {
       const list: any[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        const itemSlug = data.clinicSlug || 'revon-dental';
-        if (itemSlug === activeSlug) {
+        if (matchesClinicScope(data, activeSlug, activeClinicId)) {
           list.push({ id: doc.id, ...data });
         }
       });
@@ -105,7 +105,7 @@ export function Chatbot() {
       unsubApp();
       unsubBills();
     };
-  }, [userProfile, activeClinic]);
+  }, [userProfile, activeClinic?.slug, activeClinic?.id]);
 
   // Update welcome message when active clinic changes
   useEffect(() => {
@@ -152,27 +152,17 @@ export function Chatbot() {
     return null;
   };
 
-  // Map Dentist Names to UID
-  const getDentistIdByName = (name: string) => {
-    const clean = name.toLowerCase();
-    if (clean.includes("tohid") || clean.includes("mohammad")) {
-      return "dentist-dr-tohid";
+  // Resolve clinic-registered doctor strictly from active clinic roster
+  const resolveClinicDoctor = (name?: string) => {
+    if (!dentists || dentists.length === 0) return null;
+    if (name) {
+      const exact = findRegisteredDoctorMatch(dentists, '', name);
+      if (exact) return exact;
+      const lower = name.toLowerCase();
+      const partial = dentists.find(d => d.displayName.toLowerCase().includes(lower) || lower.includes(d.displayName.toLowerCase()));
+      if (partial) return partial;
     }
-    if (clean.includes("ananya") || clean.includes("rao")) {
-      return "dentist-dr-ananya";
-    }
-    if (clean.includes("rajesh") || clean.includes("kumar")) {
-      return "dentist-dr-rajesh";
-    }
-    // Fallback default
-    return "dentist-dr-tohid";
-  };
-
-  const getDentistFullName = (id: string) => {
-    if (id === "dentist-dr-tohid") return "Dr. Mohammad Tohid Kaginalli";
-    if (id === "dentist-dr-ananya") return "Dr. Ananya Rao";
-    if (id === "dentist-dr-rajesh") return "Dr. Rajesh Kumar";
-    return "Dr. Mohammad Tohid Kaginalli";
+    return dentists[0];
   };
 
   // Perform Appointment booking
@@ -180,8 +170,13 @@ export function Chatbot() {
     if (!userProfile) return { success: false, reason: "User not logged in." };
 
     try {
-      const dentistId = getDentistIdByName(actionData.dentistName);
-      const dentistName = getDentistFullName(dentistId);
+      const matchedDoctor = resolveClinicDoctor(actionData.dentistName);
+      if (!matchedDoctor) {
+        return { success: false, reason: `No registered doctors are currently assigned to ${activeClinic?.name || 'this clinic'}.` };
+      }
+
+      const dentistId = matchedDoctor.uid;
+      const dentistName = matchedDoctor.displayName;
       const treatment = actionData.treatment;
       const dateTime = actionData.dateTime || new Date(Date.now() + 86400000 * 2).toISOString(); // Default to tomorrow
 
@@ -192,10 +187,12 @@ export function Chatbot() {
         patientPhone: userProfile.phone || "",
         dentistId,
         dentistName,
+        clinicSlug: activeClinic?.slug || 'revon-dental',
+        clinicId: activeClinic?.id,
         treatment,
         dateTime,
         status: "pending" as const,
-        notes: "Automated booking generated via Revon AI Chat Assistant."
+        notes: "Automated booking generated via Care Assistant."
       };
 
       await createAppointment(appData);
@@ -260,6 +257,10 @@ export function Chatbot() {
           dateTime: a.dateTime,
           status: a.status
         })),
+        doctorsList: dentists ? dentists.map(d => ({
+          name: d.displayName,
+          specialty: d.specialty || 'Consultant Specialist'
+        })) : [],
         surgeonsList: surgeons ? surgeons.map(s => ({
           name: s.displayName,
           specialty: s.specialty,

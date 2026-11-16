@@ -3,7 +3,7 @@ import { APP_NAME } from '../config/appConfig';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useClinic } from '../context/ClinicContext';
-import { LogIn, LogOut, User, Calendar, Menu, X, LayoutDashboard, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, PartyPopper, Activity, TrendingUp, Star, BarChart3 } from 'lucide-react';
+import { LogOut, User, Calendar, Menu, X, Bell, Check, CheckCheck, Sun, Moon, Building2, ChevronDown, Sliders, ShieldCheck, Search, Activity } from 'lucide-react';
 import { RevonLogo } from './RevonLogo';
 import { FestivalDecorModal } from './FestivalDecorModal';
 import { FestivalLogoWrapper, FestivalTitleCompanion, FestivalNavbarBorder } from './FestivalHeaderDecor';
@@ -159,7 +159,7 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
           <div className="flex items-center gap-4">
             <button 
               id="brand-logo-btn"
-              onClick={() => handleNav(user ? (userProfile?.role === 'patient' ? 'dashboard' : 'analytics') : (currentView === 'clinic-search' ? 'clinic-search' : 'portfolio'))}
+              onClick={() => handleNav(user ? 'dashboard' : (currentView === 'clinic-search' ? 'clinic-search' : 'portfolio'))}
               className="flex items-center gap-2.5 cursor-pointer focus:outline-none relative group"
             >
               <FestivalLogoWrapper>
@@ -531,16 +531,6 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
                 className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-revon-blue dark:hover:text-revon-teal"
               >
                 Clinic Portfolio
-              </button>
-            )}
-            {user && userProfile?.role !== 'patient' && (
-              <button
-                id="mob-analytics-btn"
-                onClick={() => handleNav('analytics')}
-                className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-revon-blue dark:hover:text-revon-teal"
-              >
-                <BarChart3 className="h-4 w-4 text-revon-blue dark:text-teal-400" />
-                <span>Executive Analytics & KPIs</span>
               </button>
             )}
             {user && (

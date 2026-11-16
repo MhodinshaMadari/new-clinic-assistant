@@ -27,7 +27,7 @@ export function Register({ onNavigate }: RegisterProps) {
     setError(null);
     setLoading(true);
     try {
-      await registerWithEmail(email, password, displayName, phone, role, activeClinic?.slug || 'revon-dental');
+      await registerWithEmail(email, password, displayName, phone, role, activeClinic?.slug || 'revon-dental', activeClinic?.id);
       onNavigate('dashboard');
     } catch (err: any) {
       console.error(err);

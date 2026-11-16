@@ -19,7 +19,7 @@ import { Chatbot } from './components/Chatbot';
 import { RevonLogo } from './components/RevonLogo';
 import { APP_NAME } from './config/appConfig';
 import { db } from './firebase';
-import { collection, doc, getDocs, setDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, addDoc, query, limit } from 'firebase/firestore';
 import { Sparkles, RefreshCw, ShieldAlert, Ban, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -28,6 +28,13 @@ async function seedDatabaseIfNeeded() {
   try {
     const seededFlag = localStorage.getItem('revon_dental_db_seeded_v3');
     if (seededFlag) return;
+
+    // Avoid redundant writes if database already contains seeded data
+    const existingReviewsSnap = await getDocs(query(collection(db, 'reviews'), limit(1)));
+    if (!existingReviewsSnap.empty) {
+      localStorage.setItem('revon_dental_db_seeded_v3', 'true');
+      return;
+    }
 
     console.log("Starting Revon Advance Dental Care Firestore seeding...");
 
@@ -39,6 +46,8 @@ async function seedDatabaseIfNeeded() {
         email: 'tohid.kaginalli@revondental.in',
         role: 'dentist',
         phone: '+91 98765 43210',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date().toISOString()
       },
       {
@@ -47,6 +56,8 @@ async function seedDatabaseIfNeeded() {
         email: 'ananya.rao@revondental.in',
         role: 'dentist',
         phone: '+91 98765 43211',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date().toISOString()
       },
       {
@@ -55,6 +66,8 @@ async function seedDatabaseIfNeeded() {
         email: 'rajesh.kumar@revondental.in',
         role: 'dentist',
         phone: '+91 98765 43212',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date().toISOString()
       }
     ];
@@ -69,18 +82,24 @@ async function seedDatabaseIfNeeded() {
         patientName: 'Aarav Sharma',
         rating: 5,
         comment: 'Absolutely amazing! Dr. Mohammad Tohid Kaginalli made me feel so comfortable during my wisdom tooth removal. The pain-free technology is real!',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
       },
       {
         patientName: 'Priya Patel',
         rating: 5,
         comment: 'The whitening service is stellar! My teeth look beautiful and natural. The staff are polite, and the clinic is incredibly clean.',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString()
       },
       {
         patientName: 'Vikram Singh',
         rating: 5,
         comment: 'Highly recommend this clinic. The scheduling system was smooth, real-time tracking showed my spot, and I received automated email reminders!',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString()
       }
     ];
@@ -98,6 +117,8 @@ async function seedDatabaseIfNeeded() {
         patientPhone: '+91 91234 56789',
         dentistId: 'dentist-dr-tohid',
         dentistName: 'Dr. Mohammad Tohid Kaginalli',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         dateTime: new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString().split('T')[0] + 'T10:00:00',
         status: 'pending',
         treatment: 'General Consultation & Clean',
@@ -112,6 +133,8 @@ async function seedDatabaseIfNeeded() {
         patientPhone: '+91 98765 12345',
         dentistId: 'dentist-dr-ananya',
         dentistName: 'Dr. Ananya Rao',
+        clinicSlug: 'revon-dental',
+        clinicId: 'clinic-revon-dental',
         dateTime: new Date(Date.now() + 1 * 24 * 3600 * 1000).toISOString().split('T')[0] + 'T14:00:00',
         status: 'confirmed',
         treatment: 'Teeth Whitening',
@@ -127,8 +150,12 @@ async function seedDatabaseIfNeeded() {
 
     localStorage.setItem('revon_dental_db_seeded_v3', 'true');
     console.log("Revon Advance Dental Care database seeding complete.");
-  } catch (err) {
-    console.warn("Seeding bypassed or failed (expected if permissions are tight):", err);
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || String(err?.message || '').includes('Quota')) {
+      console.warn("Firestore daily write quota exceeded; skipping initial seeding.");
+    } else {
+      console.warn("Seeding bypassed or failed (expected if permissions are tight):", err);
+    }
   }
 }
 
@@ -141,9 +168,11 @@ function MainApp() {
   const isClinicDisabled = activeClinic && (activeClinic.status === 'disabled' || activeClinic.isDisabled === true);
 
   useEffect(() => {
-    // Seed initial data asynchronously on load
-    seedDatabaseIfNeeded();
-  }, []);
+    // Only seed initial demo records when an authenticated admin opens an empty database
+    if (user && (isSuperAdmin || userProfile?.role === 'admin')) {
+      seedDatabaseIfNeeded();
+    }
+  }, [user, isSuperAdmin, userProfile?.role]);
 
   // Parse URL on load to pick clinic and view (e.g. /revon-dental/portfolio, /smilecare/dashboard, /dev-portal)
   useEffect(() => {

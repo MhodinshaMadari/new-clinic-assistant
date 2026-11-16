@@ -199,12 +199,15 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   const [socialHandles, setSocialHandles] = useState<SocialHandle[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Seed default clinics into Firestore if empty & associate legacy data with Revon Advance Dental Care
+  // Seed default clinics only when authenticated and Firestore clinics collection is genuinely empty
   useEffect(() => {
     const seedAndAssociateData = async () => {
       try {
         const seededKey = 'revon_clinics_seeded_v2';
         if (localStorage.getItem(seededKey)) return;
+
+        const { auth } = await import('../firebase');
+        if (!auth.currentUser) return;
 
         const snap = await getDocs(collection(db, 'clinics'));
         if (snap.empty) {
@@ -214,63 +217,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Auto-associate legacy records with 'revon-dental'
-        const collectionsToMigrate = [
-          'appointments',
-          'bills',
-          'invoices',
-          'users',
-          'surgeons',
-          'reviews',
-          'support_queries',
-          'notifications',
-          'reminder_logs'
-        ];
-
-        for (const colName of collectionsToMigrate) {
-          try {
-            const colSnap = await getDocs(collection(db, colName));
-            for (const docSnap of colSnap.docs) {
-              const data = docSnap.data();
-              if (!data.clinicSlug) {
-                await updateDoc(doc(db, colName, docSnap.id), {
-                  clinicSlug: 'revon-dental',
-                  clinicId: 'c1'
-                });
-              }
-            }
-          } catch (colErr) {
-            console.warn(`Collection migration skipped for ${colName}:`, colErr);
-          }
-        }
-
-        // Auto-sync Google Business Profile ID 1293814119993852207 into Firestore clinics
-        try {
-          const googleSyncKey = 'revon_google_profile_1293814119993852207_v2';
-          if (!localStorage.getItem(googleSyncKey)) {
-            const clinicDocsSnap = await getDocs(collection(db, 'clinics'));
-            for (const cDoc of clinicDocsSnap.docs) {
-              const cData = cDoc.data() as Partial<Clinic>;
-              const curPid = cData.googleConfig?.businessProfileId || cData.googleConfig?.placeId;
-              if (!curPid || curPid.startsWith('ChIJ74_revon') || curPid.startsWith('ChIJ_')) {
-                const gen = buildGoogleReviewUrls(DEFAULT_GOOGLE_BUSINESS_PROFILE_ID, cData.name);
-                await updateDoc(doc(db, 'clinics', cDoc.id), sanitizeFirestoreData({
-                  'googleConfig.businessProfileId': DEFAULT_GOOGLE_BUSINESS_PROFILE_ID,
-                  'googleConfig.placeId': DEFAULT_GOOGLE_BUSINESS_PROFILE_ID,
-                  'googleConfig.writeReviewUrl': gen.writeReviewUrl,
-                  'googleConfig.googleMapsUrl': gen.googleMapsUrl
-                }));
-              }
-            }
-            localStorage.setItem(googleSyncKey, 'true');
-          }
-        } catch (syncErr) {
-          console.warn("Google Business Profile sync bypassed:", syncErr);
-        }
-
         localStorage.setItem(seededKey, 'true');
-      } catch (err) {
-        console.warn("Clinic seeding & migration bypassed:", err);
+      } catch (err: any) {
+        if (err?.code === 'resource-exhausted' || String(err?.message || '').includes('Quota')) {
+          console.warn("Firestore daily write quota exceeded; using built-in clinic defaults.");
+        } else {
+          console.warn("Clinic seeding bypassed:", err);
+        }
       }
     };
 
@@ -475,8 +428,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     };
   }, [rawActiveClinic, socialHandles]);
 
-  // Sync default location when active clinic changes
+  // Sync default location & active clinic identifiers when active clinic changes
   useEffect(() => {
+    if (activeClinic?.id) {
+      try {
+        localStorage.setItem('revon_active_clinic_id', activeClinic.id);
+      } catch (e) {}
+    }
     if (activeClinic && activeClinic.locations && activeClinic.locations.length > 0) {
       if (!activeLocationId || !activeClinic.locations.some(l => l.id === activeLocationId)) {
         const primaryLoc = activeClinic.locations.find(l => l.isPrimary) || activeClinic.locations[0];
@@ -491,6 +449,10 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     setActiveClinicSlug(slug);
     try {
       localStorage.setItem('revon_active_clinic_slug', slug);
+      const matched = clinics.find(c => c.slug === slug);
+      if (matched?.id) {
+        localStorage.setItem('revon_active_clinic_id', matched.id);
+      }
     } catch (e) {}
   };
 

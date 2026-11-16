@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   Clock, 
@@ -80,6 +80,16 @@ export const DentistSlotBreakdownView: React.FC<DentistSlotBreakdownViewProps> =
     new Date().toISOString().split('T')[0]
   );
 
+  useEffect(() => {
+    if (dentists.length === 0) {
+      if (selectedDentistId !== '') setSelectedDentistId('');
+      return;
+    }
+    if (!selectedDentistId || !dentists.some((d) => d.uid === selectedDentistId)) {
+      setSelectedDentistId(dentists[0].uid);
+    }
+  }, [dentists, selectedDentistId]);
+
   const activeDentist = dentists.find(d => d.uid === selectedDentistId) || dentists[0];
 
   const handlePrevDay = () => {
@@ -141,13 +151,18 @@ export const DentistSlotBreakdownView: React.FC<DentistSlotBreakdownViewProps> =
             <select
               value={selectedDentistId || (activeDentist?.uid || '')}
               onChange={(e) => setSelectedDentistId(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-2"
+              disabled={dentists.length === 0}
+              className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-2 disabled:opacity-60"
             >
-              {dentists.map(d => (
-                <option key={d.uid} value={d.uid} className="dark:bg-slate-800">
-                  {d.displayName}
-                </option>
-              ))}
+              {dentists.length === 0 ? (
+                <option value="">No clinic doctors registered</option>
+              ) : (
+                dentists.map(d => (
+                  <option key={d.uid} value={d.uid} className="dark:bg-slate-800">
+                    {d.displayName}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -191,7 +206,7 @@ export const DentistSlotBreakdownView: React.FC<DentistSlotBreakdownViewProps> =
           </span>
           <div className="font-bold text-slate-900 dark:text-white text-sm font-display mt-1 flex items-center space-x-2">
             <User className="h-4 w-4 text-revon-blue" />
-            <span>{activeDentist?.displayName || 'All Specialists'}</span>
+            <span>{activeDentist?.displayName || 'No Registered Practitioner'}</span>
           </div>
         </div>
 
@@ -227,6 +242,17 @@ export const DentistSlotBreakdownView: React.FC<DentistSlotBreakdownViewProps> =
           <span>10 Standard Clinic Slots</span>
         </div>
 
+        {dentists.length === 0 ? (
+          <div className="p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 text-center space-y-2">
+            <AlertCircle className="h-6 w-6 text-slate-400 mx-auto" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+              No doctors registered to this clinic yet
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Register a Dentist, Doctor, or Specialist user account under Admin Controls to view and book daily chair slots.
+            </p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {slotStatusList.map((slot) => {
             const isBooked = slot.isBooked;
@@ -366,6 +392,7 @@ export const DentistSlotBreakdownView: React.FC<DentistSlotBreakdownViewProps> =
             );
           })}
         </div>
+        )}
       </div>
 
     </div>

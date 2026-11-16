@@ -16,6 +16,10 @@ import {
   Sparkles,
   AlertCircle
 } from 'lucide-react';
+// @ts-ignore
+import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { buildClinicLetterhead, PrintDocumentPayload } from '../utils/printService';
 
 interface PostOpCareModalProps {
   isOpen: boolean;
@@ -163,6 +167,7 @@ export function PostOpCareModal({ isOpen, onClose, appointment }: PostOpCareModa
   const [followUpDate, setFollowUpDate] = useState('');
   const [copied, setCopied] = useState(false);
   const [sentWhatsApp, setSentWhatsApp] = useState(false);
+  const [printPreviewDoc, setPrintPreviewDoc] = useState<PrintDocumentPayload | null>(null);
 
   if (!isOpen || !appointment) return null;
 
@@ -223,7 +228,38 @@ export function PostOpCareModal({ isOpen, onClose, appointment }: PostOpCareModa
   };
 
   const handlePrintSlip = () => {
-    window.print();
+    const letterhead = buildClinicLetterhead(
+      activeClinic,
+      clinicName,
+      mainLogo
+    );
+    const docNum = `CARE-${appointment.id.substring(0, 8).toUpperCase()}`;
+
+    setPrintPreviewDoc({
+      type: 'post_op_care',
+      fileName: `${letterhead.clinicSlug}_PostOp_${docNum}.pdf`.replace(/[^a-zA-Z0-9._-]/g, '_'),
+      documentTitle: 'Post-Operative Care Instruction Slip',
+      documentNumber: docNum,
+      issueDate: new Date().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }),
+      clinic: letterhead,
+      patientName: appointment.patientName,
+      patientPhone: appointment.patientPhone || undefined,
+      dentistName: appointment.dentistName || 'Attending Dental Surgeon',
+      treatmentName: appointment.treatment || currentGuide.name,
+      guideName: currentGuide.name,
+      guideCategory: currentGuide.category,
+      keyPoints: currentGuide.keyPoints,
+      dietAdvice: currentGuide.dietAdvice,
+      hygieneAdvice: currentGuide.hygieneAdvice,
+      emergencyAlert: currentGuide.emergencyAlert,
+      customMedicationNote: customMedicationNote.trim() || undefined,
+      followUpDate: followUpDate.trim() || undefined,
+      preparedBy: appointment.dentistName || 'Clinical Care Team'
+    });
   };
 
   return (
@@ -415,6 +451,11 @@ export function PostOpCareModal({ isOpen, onClose, appointment }: PostOpCareModa
         </div>
 
       </div>
+
+      <PrintPreviewModal
+        documentData={printPreviewDoc}
+        onClose={() => setPrintPreviewDoc(null)}
+      />
     </div>
   );
 }

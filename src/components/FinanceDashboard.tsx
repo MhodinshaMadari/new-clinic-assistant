@@ -13,6 +13,16 @@ import {
 } from 'firebase/firestore';
 import { UserProfile, MonthlyFinance, Expense, ExpenseCategory, Invoice, Bill } from '../types';
 import { useClinic } from '../context/ClinicContext';
+import {
+  buildMonthlyFinancesMap,
+  calculateMonthFinances,
+  calculateSixMonthTrend
+} from '../utils/clinicFinanceSync';
+import { matchesClinicScope } from '../utils/clinicDoctorScope';
+// @ts-ignore
+import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { buildClinicLetterhead, PrintDocumentPayload } from '../utils/printService';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -50,6 +60,9 @@ import { PaginationControls } from './PaginationControls';
 
 interface FinanceDashboardProps {
   userProfile?: UserProfile | null;
+  selectedYear?: number;
+  selectedMonth?: number;
+  onMonthChange?: (year: number, month: number) => void;
 }
 
 const MONTH_NAMES = [
@@ -57,14 +70,30 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
+export function FinanceDashboard({
+  userProfile,
+  selectedYear: controlledYear,
+  selectedMonth: controlledMonth,
+  onMonthChange
+}: FinanceDashboardProps) {
   const { activeClinic } = useClinic();
   const clinicSlug = activeClinic?.slug || 'revon-dental';
 
   // Current system date
   const today = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth() + 1); // 1-12
+  const [internalYear, setInternalYear] = useState<number>(today.getFullYear());
+  const [internalMonth, setInternalMonth] = useState<number>(today.getMonth() + 1); // 1-12
+
+  const selectedYear = controlledYear ?? internalYear;
+  const selectedMonth = controlledMonth ?? internalMonth;
+
+  const updateSelectedPeriod = (year: number, month: number) => {
+    setInternalYear(year);
+    setInternalMonth(month);
+    if (onMonthChange) {
+      onMonthChange(year, month);
+    }
+  };
 
   // Month key string e.g. "2026-09"
   const selectedMonthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
@@ -90,17 +119,11 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   // 1. Subscribe to monthly_finances for current clinic
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'monthly_finances'), (snapshot) => {
-      const finMap: Record<string, MonthlyFinance> = {};
+      const entries: Array<{ id: string; data: MonthlyFinance }> = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as MonthlyFinance;
-        if (!data.clinicSlug || data.clinicSlug === clinicSlug) {
-          finMap[data.monthKey || docSnap.id] = {
-            ...data,
-            id: docSnap.id
-          };
-        }
+        entries.push({ id: docSnap.id, data: docSnap.data() as MonthlyFinance });
       });
-      setMonthlyFinances(finMap);
+      setMonthlyFinances(buildMonthlyFinancesMap(entries, clinicSlug));
       setLoadingFinances(false);
     }, (err) => {
       console.error('Failed to load monthly finances:', err);
@@ -110,13 +133,15 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     return () => unsub();
   }, [clinicSlug]);
 
+  const clinicId = activeClinic?.id;
+
   // 2. Subscribe to expenses collection
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'expenses'), (snapshot) => {
       const list: Expense[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Expense;
-        if (!data.clinicSlug || data.clinicSlug === clinicSlug) {
+        if (matchesClinicScope(data, clinicSlug, clinicId)) {
           list.push({
             ...data,
             id: docSnap.id
@@ -133,7 +158,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     });
 
     return () => unsub();
-  }, [clinicSlug]);
+  }, [clinicSlug, clinicId]);
 
   // 3. Subscribe to invoices
   useEffect(() => {
@@ -141,7 +166,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       const invList: Invoice[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Invoice;
-        if (!data.clinicSlug || data.clinicSlug === clinicSlug) {
+        if (matchesClinicScope(data, clinicSlug, clinicId)) {
           invList.push({
             ...data,
             id: docSnap.id
@@ -154,7 +179,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     });
 
     return () => unsub();
-  }, [clinicSlug]);
+  }, [clinicSlug, clinicId]);
 
   // 4. Subscribe to bills
   useEffect(() => {
@@ -162,7 +187,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
       const billList: Bill[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Bill;
-        if (!data.clinicSlug || data.clinicSlug === clinicSlug) {
+        if (matchesClinicScope(data, clinicSlug, clinicId)) {
           billList.push({
             ...data,
             id: docSnap.id
@@ -175,146 +200,51 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     });
 
     return () => unsub();
-  }, [clinicSlug]);
+  }, [clinicSlug, clinicId]);
 
   // ---------------------------------------------------------------------------
-  // Calculations for Current Selected Month
+  // Calculations for Current Selected Month (Canonical Shared Engine)
   // ---------------------------------------------------------------------------
   const currentMonthFinance = monthlyFinances[selectedMonthKey];
 
-  // Invoices for selected month
-  const monthInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      const dateStr = inv.paymentDate || inv.createdAt || '';
-      return dateStr.startsWith(selectedMonthKey);
+  const monthSummary = useMemo(() => {
+    return calculateMonthFinances({
+      monthKey: selectedMonthKey,
+      invoices,
+      bills,
+      expenses,
+      monthlyFinances
     });
-  }, [invoices, selectedMonthKey]);
+  }, [selectedMonthKey, invoices, bills, expenses, monthlyFinances]);
 
-  // Bills for selected month
-  const monthBills = useMemo(() => {
-    return bills.filter((b) => {
-      const dateStr = b.paymentDate || b.createdAt || '';
-      return dateStr.startsWith(selectedMonthKey);
-    });
-  }, [bills, selectedMonthKey]);
-
-  // Gross Collected Revenue from treatment invoices
-  const collectedInvoicesRevenue = useMemo(() => {
-    return monthInvoices
-      .filter((inv) => inv.status === 'collected')
-      .reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
-  }, [monthInvoices]);
-
-  // Collected revenue from bills (avoid double counting if matching appointmentId already collected in invoices)
-  const collectedBillsRevenue = useMemo(() => {
-    const invoiceApptIds = new Set(
-      monthInvoices.filter((inv) => inv.status === 'collected').map((inv) => inv.appointmentId).filter(Boolean)
-    );
-    return monthBills
-      .filter((b) => b.status === 'collected' && (!b.appointmentId || !invoiceApptIds.has(b.appointmentId)))
-      .reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
-  }, [monthBills, monthInvoices]);
-
-  // Uncollected / Pending Invoices for selected month
-  const pendingInvoicedAmount = useMemo(() => {
-    return monthInvoices
-      .filter((inv) => inv.status === 'pending')
-      .reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
-  }, [monthInvoices]);
-
-  // Additional miscellaneous revenue set by admin (e.g. lab rebates, camps)
-  const additionalDirectRevenue = Number(currentMonthFinance?.otherRevenue) || 0;
-
-  // Itemized logged expense vouchers for selected month
-  const monthExpenseVouchers = useMemo(() => {
-    return expenses.filter((e) => {
-      const dateStr = e.date || e.createdAt || '';
-      return dateStr.startsWith(selectedMonthKey) || e.monthKey === selectedMonthKey;
-    });
-  }, [expenses, selectedMonthKey]);
-
-  // Split vouchers into Paid (outflows) and Collected (inflows)
-  const monthPaidVouchers = useMemo(() => {
-    return monthExpenseVouchers.filter((e) => (e.voucherType || 'paid') === 'paid');
-  }, [monthExpenseVouchers]);
-
-  const monthCollectedVouchers = useMemo(() => {
-    return monthExpenseVouchers.filter((e) => e.voucherType === 'collected');
-  }, [monthExpenseVouchers]);
-
-  const totalPaidVouchers = useMemo(() => {
-    return monthPaidVouchers.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [monthPaidVouchers]);
-
-  const totalCollectedVouchers = useMemo(() => {
-    return monthCollectedVouchers.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [monthCollectedVouchers]);
-
-  // Total Gross Revenue / Earning for this month
-  // (Invoiced Treatment Collections + Bill Receipts + Direct Voucher Collections + Miscellaneous Direct Revenue)
-  const totalRevenue = collectedInvoicesRevenue + collectedBillsRevenue + additionalDirectRevenue + totalCollectedVouchers;
-
-  // Monthly Expenses:
-  // Admin budgeted / set figures
-  const setClinicRent = Number(currentMonthFinance?.clinicRent) || 0;
-  const setStaffSalary = Number(currentMonthFinance?.staffSalary) || 0;
-  const setConsumableItems = Number(currentMonthFinance?.consumableItems) || 0;
-  const setOtherExpenses = Number(currentMonthFinance?.otherExpenses) || 0;
-  const totalSetExpenses = setClinicRent + setStaffSalary + setConsumableItems + setOtherExpenses;
-
-  // Net voucher expense: Total Paid - Total Collected
-  const netVoucherExpense = totalPaidVouchers - totalCollectedVouchers;
-
-  // Category sums of logged vouchers (summing outflows)
-  const loggedCategoryTotals = useMemo(() => {
-    const totals: Record<ExpenseCategory, number> = {
-      rent: 0,
-      salary: 0,
-      consumable: 0,
-      other: 0
-    };
-    monthPaidVouchers.forEach((e) => {
-      const cat = e.category || 'other';
-      if (totals[cat] !== undefined) {
-        totals[cat] += Number(e.amount) || 0;
-      } else {
-        totals.other += Number(e.amount) || 0;
-      }
-    });
-    return totals;
-  }, [monthPaidVouchers]);
-
-  const totalLoggedExpenses = 
-    loggedCategoryTotals.rent + 
-    loggedCategoryTotals.salary + 
-    loggedCategoryTotals.consumable + 
-    loggedCategoryTotals.other;
-
-  // Expense mode: If admin explicitly set monthly figures, use set figures as canonical monthly overhead,
-  // or show logged vouchers if greater or if set figures are 0.
-  const hasSetExpenses = Boolean(currentMonthFinance && totalSetExpenses > 0);
-  
-  // Total effective monthly expenses (prefers set budget if configured, or logged vouchers sum)
-  const effectiveRent = setClinicRent > 0 ? setClinicRent : loggedCategoryTotals.rent;
-  const effectiveSalary = setStaffSalary > 0 ? setStaffSalary : loggedCategoryTotals.salary;
-  const effectiveConsumables = setConsumableItems > 0 ? setConsumableItems : loggedCategoryTotals.consumable;
-  const effectiveOther = setOtherExpenses > 0 ? setOtherExpenses : loggedCategoryTotals.other;
-  const totalEffectiveExpenses = effectiveRent + effectiveSalary + effectiveConsumables + effectiveOther;
-
-  // Net Profit / Net Margin calculation (Net Revenue after removing all expenses)
-  const netEarnings = totalRevenue - totalEffectiveExpenses;
-  const profitMarginPercent = totalRevenue > 0 
-    ? ((netEarnings / totalRevenue) * 100).toFixed(1) 
-    : '0.0';
-
-  // Monthly Target calculations based on Net Revenue after removing all expenses
-  const monthVoucherTarget = Number(currentMonthFinance?.voucherTargetAmount) || Number(currentMonthFinance?.totalBudgetedExpenses) || 0;
-
-  // Progress against net revenue target
-  const targetAchievementPercent = monthVoucherTarget > 0 ? (netEarnings / monthVoucherTarget) * 100 : 0;
-  const isTargetAchieved = monthVoucherTarget > 0 && netEarnings >= monthVoucherTarget;
-  const remainingToTarget = monthVoucherTarget > 0 ? Math.max(0, monthVoucherTarget - netEarnings) : 0;
-  const surplusOverTarget = isTargetAchieved ? netEarnings - monthVoucherTarget : 0;
+  const {
+    monthInvoices,
+    monthExpenseVouchers,
+    monthPaidVouchers,
+    monthCollectedVouchers,
+    collectedInvoicesRevenue,
+    collectedBillsRevenue,
+    pendingInvoicedAmount,
+    additionalDirectRevenue,
+    totalPaidVouchers,
+    totalCollectedVouchers,
+    netVoucherExpense,
+    totalRevenue,
+    loggedCategoryTotals,
+    hasSetExpenses,
+    effectiveRent,
+    effectiveSalary,
+    effectiveConsumables,
+    effectiveOther,
+    totalEffectiveExpenses,
+    netEarnings,
+    profitMarginPercent,
+    monthVoucherTarget,
+    targetAchievementPercent,
+    isTargetAchieved,
+    remainingToTarget,
+    surplusOverTarget
+  } = monthSummary;
 
   // ---------------------------------------------------------------------------
   // Modals & Forms State
@@ -328,6 +258,7 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   const [savingBudget, setSavingBudget] = useState<boolean>(false);
   const [savingExpense, setSavingExpense] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [printPreviewDoc, setPrintPreviewDoc] = useState<PrintDocumentPayload | null>(null);
 
   // Form states for Setting Monthly Expenses
   const [budgetForm, setBudgetForm] = useState({
@@ -420,27 +351,24 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   // ---------------------------------------------------------------------------
   const handlePrevMonth = () => {
     if (selectedMonth === 1) {
-      setSelectedMonth(12);
-      setSelectedYear((prev) => prev - 1);
+      updateSelectedPeriod(selectedYear - 1, 12);
     } else {
-      setSelectedMonth((prev) => prev - 1);
+      updateSelectedPeriod(selectedYear, selectedMonth - 1);
     }
     setExpensePage(1);
   };
 
   const handleNextMonth = () => {
     if (selectedMonth === 12) {
-      setSelectedMonth(1);
-      setSelectedYear((prev) => prev + 1);
+      updateSelectedPeriod(selectedYear + 1, 1);
     } else {
-      setSelectedMonth((prev) => prev + 1);
+      updateSelectedPeriod(selectedYear, selectedMonth + 1);
     }
     setExpensePage(1);
   };
 
   const handleCurrentMonth = () => {
-    setSelectedYear(today.getFullYear());
-    setSelectedMonth(today.getMonth() + 1);
+    updateSelectedPeriod(today.getFullYear(), today.getMonth() + 1);
     setExpensePage(1);
   };
 
@@ -737,54 +665,20 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
   // 6-Month Comparison Data for Visualization Bar Chart
   // ---------------------------------------------------------------------------
   const sixMonthTrend = useMemo(() => {
-    const list = [];
-    for (let i = 5; i >= 0; i--) {
-      let targetMonth = selectedMonth - i;
-      let targetYear = selectedYear;
-      while (targetMonth <= 0) {
-        targetMonth += 12;
-        targetYear -= 1;
-      }
-      const mKey = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
-      const mLabel = `${MONTH_NAMES[targetMonth - 1].substring(0, 3)} '${String(targetYear).substring(2)}`;
-
-      // Calculate collected revenue for that month
-      const mInvs = invoices.filter((inv) => (inv.paymentDate || inv.createdAt || '').startsWith(mKey));
-      const mBills = bills.filter((b) => (b.paymentDate || b.createdAt || '').startsWith(mKey));
-      const invRevenue = mInvs.filter((inv) => inv.status === 'collected').reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
-      const billRevenue = mBills.filter((b) => b.status === 'collected').reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
-      const mFin = monthlyFinances[mKey];
-      const mDirectRev = Number(mFin?.otherRevenue) || 0;
-      // Itemized vouchers for that month (split into collected inflows and paid outflows)
-      const mVouchers = expenses.filter((e) => (e.date || e.createdAt || '').startsWith(mKey) || e.monthKey === mKey);
-      const mCollectedSum = mVouchers
-        .filter((e) => e.voucherType === 'collected')
-        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-      const mPaidSum = mVouchers
-        .filter((e) => (e.voucherType || 'paid') === 'paid')
-        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-      const mRev = invRevenue + billRevenue + mDirectRev + mCollectedSum;
-
-      // Calculate expenses for that month
-      const mRent = Number(mFin?.clinicRent) || 0;
-      const mSal = Number(mFin?.staffSalary) || 0;
-      const mCons = Number(mFin?.consumableItems) || 0;
-      const mOth = Number(mFin?.otherExpenses) || 0;
-      const mSetExp = mRent + mSal + mCons + mOth;
-
-      const mExp = mSetExp > 0 ? mSetExp : mPaidSum;
-      const mProfit = mRev - mExp;
-
-      list.push({
-        monthKey: mKey,
-        label: mLabel,
-        revenue: mRev,
-        expenses: mExp,
-        profit: mProfit
-      });
-    }
-    return list;
+    return calculateSixMonthTrend({
+      anchorYear: selectedYear,
+      anchorMonth: selectedMonth,
+      invoices,
+      bills,
+      expenses,
+      monthlyFinances
+    }).map((item) => ({
+      monthKey: item.monthKey,
+      label: item.shortYearLabel,
+      revenue: item.revenue,
+      expenses: item.expenses,
+      profit: item.profit
+    }));
   }, [selectedMonth, selectedYear, invoices, bills, monthlyFinances, expenses]);
 
   // Max value in 6 months for scaling the visual bars
@@ -851,9 +745,97 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
     document.body.removeChild(link);
   };
 
-  // Print Financial Summary Statement
+  // Print Financial Summary Statement (Unified In-App A4 Preview & PDF)
   const handlePrintReport = () => {
-    window.print();
+    const letterhead = buildClinicLetterhead(
+      activeClinic,
+      activeClinic?.name || 'Clinic Financial Desk',
+      mainLogo
+    );
+    const setRent = currentMonthFinance?.clinicRent || 0;
+    const setSalary = currentMonthFinance?.staffSalary || 0;
+    const setConsumables = currentMonthFinance?.consumableItems || 0;
+    const setOther = currentMonthFinance?.otherExpenses || 0;
+
+    const pendingVouchersAmount = monthPaidVouchers
+      .filter((v) => v.paidStatus === 'pending')
+      .reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+
+    setPrintPreviewDoc({
+      type: 'financial_statement',
+      fileName: `${letterhead.clinicSlug}_Financial_Statement_${selectedMonthKey}.pdf`.replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_'
+      ),
+      documentTitle: 'Monthly Financial & P&L Statement',
+      documentNumber: `FIN-${selectedMonthKey}`,
+      periodLabel: selectedMonthLabel,
+      issueDate: new Date().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }),
+      clinic: letterhead,
+      kpis: {
+        grossEarnings: totalRevenue,
+        totalExpenses: totalEffectiveExpenses,
+        netRevenue: netEarnings,
+        netMarginPct: Number(profitMarginPercent) || 0,
+        targetAmount: monthVoucherTarget,
+        targetProgressPct: targetAchievementPercent,
+        isTargetAchieved,
+        remainingToTarget,
+        surplusOverTarget,
+        collectedInvoicesRevenue,
+        collectedBillsRevenue,
+        collectedVouchersRevenue: totalCollectedVouchers,
+        additionalDirectRevenue,
+        totalPendingReceivables: pendingInvoicedAmount,
+        pendingVouchersAmount
+      },
+      categoryBreakdown: [
+        {
+          label: 'Clinic Premises Rent',
+          mode: setRent > 0 ? 'Configured Ceiling' : 'Logged Vouchers',
+          budgetedAmount: setRent,
+          loggedPaidAmount: loggedCategoryTotals.rent,
+          effectiveAmount: effectiveRent
+        },
+        {
+          label: 'Doctors & Staff Payroll',
+          mode: setSalary > 0 ? 'Configured Ceiling' : 'Logged Vouchers',
+          budgetedAmount: setSalary,
+          loggedPaidAmount: loggedCategoryTotals.salary,
+          effectiveAmount: effectiveSalary
+        },
+        {
+          label: 'Dental Consumables & Stock',
+          mode: setConsumables > 0 ? 'Configured Ceiling' : 'Logged Vouchers',
+          budgetedAmount: setConsumables,
+          loggedPaidAmount: loggedCategoryTotals.consumable,
+          effectiveAmount: effectiveConsumables
+        },
+        {
+          label: 'Utilities, Lab & Other Overhead',
+          mode: setOther > 0 ? 'Configured Ceiling' : 'Logged Vouchers',
+          budgetedAmount: setOther,
+          loggedPaidAmount: loggedCategoryTotals.other,
+          effectiveAmount: effectiveOther
+        }
+      ],
+      vouchers: monthExpenseVouchers.map((v) => ({
+        date: v.date || v.monthKey,
+        title: v.title,
+        category: v.category || 'other',
+        voucherType: v.voucherType === 'collected' ? 'collected' : 'paid',
+        vendor: v.vendor || 'Direct',
+        paymentMode: v.paymentMode || 'Cash',
+        status: v.paidStatus || 'paid',
+        amount: Number(v.amount) || 0
+      })),
+      notes: currentMonthFinance?.notes || undefined,
+      preparedBy: userProfile?.displayName || userProfile?.email || 'Finance Administration'
+    });
   };
 
   if (userProfile?.role === 'patient') {
@@ -2645,6 +2627,11 @@ export function FinanceDashboard({ userProfile }: FinanceDashboardProps) {
           </div>
         </div>
       )}
+
+      <PrintPreviewModal
+        documentData={printPreviewDoc}
+        onClose={() => setPrintPreviewDoc(null)}
+      />
     </div>
   );
 }

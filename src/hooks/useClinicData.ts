@@ -7,6 +7,7 @@ import { UserProfile, TreatmentService, Review, ReminderLog, Surgeon, SocialHand
 import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { sanitizeFirestoreData } from '../utils/firestoreUtils';
+import { filterClinicRegisteredDoctors } from '../utils/clinicDoctorScope';
 import QRCode from 'qrcode';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
@@ -359,34 +360,20 @@ export function useClinicData() {
   const [services, setServices] = useState<TreatmentService[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const activeClinicId = activeClinic?.id;
+
   useEffect(() => {
-    // 1. Fetch doctors and medical specialists filtered by clinic
-    const fetchDentists = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'users'));
-        const list: UserProfile[] = [];
-        snap.forEach((doc) => {
-          const u = doc.data() as UserProfile;
-          if (u.role === 'dentist' || u.role === 'doctor' || u.role === 'specialist') {
-            const itemSlug = u.clinicSlug || 'revon-dental';
-            if (itemSlug === activeSlug) {
-              list.push(u);
-            }
-          }
-        });
-        
-        if (list.length === 0) {
-          const fallback = CLINIC_DEFAULT_DENTISTS[activeSlug] || [];
-          setDentists(fallback);
-        } else {
-          setDentists(list);
-        }
-      } catch (err) {
-        console.warn("Failed to query custom doctors & specialists, using defaults:", err);
-        const fallback = CLINIC_DEFAULT_DENTISTS[activeSlug] || [];
-        setDentists(fallback);
-      }
-    };
+    // 1. Subscribe in real-time to registered clinical practitioners strictly scoped to the active clinic
+    const unsubscribeDentists = onSnapshot(collection(db, 'users'), (snap) => {
+      const rawUsers: UserProfile[] = [];
+      snap.forEach((docSnap) => {
+        rawUsers.push({ uid: docSnap.id, ...(docSnap.data() as Omit<UserProfile, 'uid'>) });
+      });
+      setDentists(filterClinicRegisteredDoctors(rawUsers, activeSlug, activeClinicId));
+    }, (err) => {
+      console.warn("Failed to listen to clinic practitioners:", err);
+      setDentists([]);
+    });
 
     // 2. Fetch reviews filtered by clinic
     const unsubscribeReviews = onSnapshot(collection(db, 'reviews'), (snapshot) => {
@@ -485,13 +472,6 @@ export function useClinicData() {
           setSocialHandles(DEFAULT_SOCIAL_HANDLES);
         }
       } else {
-        // Auto-seed document to Firestore if missing so real-time updates are anchored
-        setDoc(doc(db, 'settings', handleDocId), {
-          handles: DEFAULT_SOCIAL_HANDLES,
-          updatedAt: new Date().toISOString(),
-          clinicSlug: activeSlug
-        }, { merge: true }).catch((e) => console.warn("Auto-seed social handles error:", e));
-
         setSocialHandles(DEFAULT_SOCIAL_HANDLES);
       }
     }, (err) => {
@@ -532,9 +512,8 @@ export function useClinicData() {
       setServices(TREATMENTS.map(t => ({ ...t, clinicSlug: activeSlug })));
     });
 
-    fetchDentists();
-
     return () => {
+      unsubscribeDentists();
       unsubscribeReviews();
       unsubscribeSurgeons();
       unsubscribeSocial();
@@ -544,7 +523,7 @@ export function useClinicData() {
       }
       unsubscribeAuth();
     };
-  }, [activeSlug, isSuperAdmin]);
+  }, [activeSlug, activeClinicId, isSuperAdmin]);
 
   const createReview = async (
     patientName: string,

@@ -19,7 +19,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
-  registerWithEmail: (email: string, password: string, displayName: string, phone: string, role?: UserRole, clinicSlug?: string) => Promise<void>;
+  registerWithEmail: (email: string, password: string, displayName: string, phone: string, role?: UserRole, clinicSlug?: string, clinicId?: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updateProfileData: (data: Partial<UserProfile>) => Promise<void>;
@@ -73,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If user profile does not have a clinicSlug, assign the current active clinic slug
         if (!data.clinicSlug) {
           let activeSlug = 'revon-dental';
+          let activeClinicId = '';
           try {
             const pathSlug = window.location.pathname.split('/').filter(Boolean)[0];
             if (pathSlug && pathSlug !== 'login' && pathSlug !== 'register' && pathSlug !== 'dev-portal') {
@@ -81,19 +82,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const stored = localStorage.getItem('revon_active_clinic_slug');
               if (stored) activeSlug = stored;
             }
+            activeClinicId = localStorage.getItem('revon_active_clinic_id') || '';
           } catch (e) {}
           updates.clinicSlug = activeSlug;
           data.clinicSlug = activeSlug;
+          if (activeClinicId && !data.clinicId) {
+            updates.clinicId = activeClinicId;
+            data.clinicId = activeClinicId;
+          }
           needsUpdate = true;
         }
 
         if (needsUpdate) {
-          await updateDoc(userRef, updates);
+          try {
+            await updateDoc(userRef, updates);
+          } catch (writeErr: any) {
+            console.warn("Could not persist user profile sync (using in-memory profile):", writeErr?.message || writeErr);
+          }
         }
         return data;
       } else {
         const role: UserRole = isSuperAdminUser ? 'super-admin' : 'patient';
         let activeSlug = 'revon-dental';
+        let activeClinicId = '';
         try {
           const pathSlug = window.location.pathname.split('/').filter(Boolean)[0];
           if (pathSlug && pathSlug !== 'login' && pathSlug !== 'register' && pathSlug !== 'dev-portal') {
@@ -102,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const stored = localStorage.getItem('revon_active_clinic_slug');
             if (stored) activeSlug = stored;
           }
+          activeClinicId = localStorage.getItem('revon_active_clinic_id') || '';
         } catch (e) {}
 
         const newProfile: UserProfile = {
@@ -112,7 +124,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           phone: firebaseUser.phoneNumber || '',
           createdAt: new Date().toISOString(),
           isSuperAdmin: isSuperAdminUser,
-          clinicSlug: activeSlug
+          clinicSlug: activeSlug,
+          ...(activeClinicId ? { clinicId: activeClinicId } : {})
         };
         await setDoc(userRef, newProfile);
         return newProfile;
@@ -200,7 +213,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     displayName: string, 
     phone: string,
     role: UserRole = 'patient',
-    clinicSlug?: string
+    clinicSlug?: string,
+    clinicId?: string
   ) => {
     setLoading(true);
     isRegisteringRef.current = true;
@@ -210,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await firebaseUpdateProfile(credential.user, { displayName });
       
       let targetSlug = clinicSlug;
+      let targetClinicId = clinicId;
       if (!targetSlug) {
         try {
           const pathSlug = window.location.pathname.split('/').filter(Boolean)[0];
@@ -219,6 +234,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const stored = localStorage.getItem('revon_active_clinic_slug');
             if (stored) targetSlug = stored;
           }
+        } catch (e) {}
+      }
+      if (!targetClinicId) {
+        try {
+          targetClinicId = localStorage.getItem('revon_active_clinic_id') || '';
         } catch (e) {}
       }
       if (!targetSlug) targetSlug = 'revon-dental';
@@ -231,7 +251,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role,
         phone,
         createdAt: new Date().toISOString(),
-        clinicSlug: targetSlug
+        clinicSlug: targetSlug,
+        ...(targetClinicId ? { clinicId: targetClinicId } : {})
       };
       
       await setDoc(doc(db, 'users', credential.user.uid), newProfile);

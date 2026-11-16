@@ -23,6 +23,9 @@ import { AdminFacilitiesManager } from './AdminFacilitiesManager';
 import { AdminReviewsManager } from './AdminReviewsManager';
 import { FinanceDashboard } from './FinanceDashboard';
 import { ExecutiveAnalyticsDashboard } from './ExecutiveAnalyticsDashboard';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { buildInvoicePrintPayload, PrintDocumentPayload } from '../utils/printService';
+import { matchesClinicScope, isPractitionerRole } from '../utils/clinicDoctorScope';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 // @ts-ignore
@@ -393,27 +396,7 @@ export function Dashboard({
           reviews: data.reviews || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
         };
         setPermissions(loaded);
-
-        // Auto-backfill finances and reviews into Firestore if missing from existing document
-        if ((userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (!data.finances || !data.reviews)) {
-          setDoc(permRef, {
-            finances: data.finances || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-            reviews: data.reviews || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
-          }, { merge: true }).catch(err => console.warn("Auto-backfill permissions failed:", err));
-        }
-      } else if (userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) {
-        // Seed default menu permissions if they don't exist (admin only)
-        setDoc(permRef, {
-          appointments: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          reminders: ['admin', 'super-admin', 'receptionist'],
-          patients: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          billing: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          finances: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          patientHistory: ['admin', 'super-admin', 'dentist', 'doctor', 'specialist'],
-          reviews: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
-        });
       } else {
-        // Fallback for non-admin if document is not yet seeded
         setPermissions({
           appointments: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
           reminders: ['admin', 'super-admin', 'receptionist'],
@@ -430,7 +413,7 @@ export function Dashboard({
       setLoadingPermissions(false);
     });
     return unsub;
-  }, [userProfile]);
+  }, [userProfile?.uid]);
 
   // Load bills in real-time
   useEffect(() => {
@@ -459,14 +442,18 @@ export function Dashboard({
             billsMap.delete(change.doc.id);
           } else {
             const b = { id: change.doc.id, ...change.doc.data() } as Bill;
-            const itemSlug = b.clinicSlug || 'revon-dental';
-            if (itemSlug === activeSlug) billsMap.set(change.doc.id, b);
+            if (matchesClinicScope(b, activeSlug, activeClinic?.id)) {
+              billsMap.set(change.doc.id, b);
+            } else {
+              billsMap.delete(change.doc.id);
+            }
           }
         });
         snapshot.forEach((doc) => {
           const b = { id: doc.id, ...doc.data() } as Bill;
-          const itemSlug = b.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) billsMap.set(doc.id, b);
+          if (matchesClinicScope(b, activeSlug, activeClinic?.id)) {
+            billsMap.set(doc.id, b);
+          }
         });
         loaded1 = true;
         updateBillsState();
@@ -482,14 +469,18 @@ export function Dashboard({
             billsMap.delete(change.doc.id);
           } else {
             const b = { id: change.doc.id, ...change.doc.data() } as Bill;
-            const itemSlug = b.clinicSlug || 'revon-dental';
-            if (itemSlug === activeSlug) billsMap.set(change.doc.id, b);
+            if (matchesClinicScope(b, activeSlug, activeClinic?.id)) {
+              billsMap.set(change.doc.id, b);
+            } else {
+              billsMap.delete(change.doc.id);
+            }
           }
         });
         snapshot.forEach((doc) => {
           const b = { id: doc.id, ...doc.data() } as Bill;
-          const itemSlug = b.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) billsMap.set(doc.id, b);
+          if (matchesClinicScope(b, activeSlug, activeClinic?.id)) {
+            billsMap.set(doc.id, b);
+          }
         });
         loaded2 = true;
         updateBillsState();
@@ -508,10 +499,9 @@ export function Dashboard({
       const unsub = onSnapshot(q, (snapshot) => {
         const list: Bill[] = [];
         snapshot.forEach((docSnap) => {
-          const b = { id: docSnap.id, ...docSnap.data() } as any;
-          const itemSlug = b.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) {
-            list.push(b as Bill);
+          const b = { id: docSnap.id, ...docSnap.data() } as Bill;
+          if (matchesClinicScope(b, activeSlug, activeClinic?.id)) {
+            list.push(b);
           }
         });
         setBills(list);
@@ -522,7 +512,7 @@ export function Dashboard({
       });
       return unsub;
     }
-  }, [userProfile, activeSlug, isSuperAdmin]);
+  }, [userProfile, activeSlug, activeClinic?.id, isSuperAdmin]);
 
   // Load invoices in real-time
   useEffect(() => {
@@ -551,14 +541,18 @@ export function Dashboard({
             invoicesMap.delete(change.doc.id);
           } else {
             const inv = { id: change.doc.id, ...change.doc.data() } as Invoice;
-            const itemSlug = inv.clinicSlug || 'revon-dental';
-            if (itemSlug === activeSlug) invoicesMap.set(change.doc.id, inv);
+            if (matchesClinicScope(inv, activeSlug, activeClinic?.id)) {
+              invoicesMap.set(change.doc.id, inv);
+            } else {
+              invoicesMap.delete(change.doc.id);
+            }
           }
         });
         snapshot.forEach((docSnap) => {
           const inv = { id: docSnap.id, ...docSnap.data() } as Invoice;
-          const itemSlug = inv.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) invoicesMap.set(docSnap.id, inv);
+          if (matchesClinicScope(inv, activeSlug, activeClinic?.id)) {
+            invoicesMap.set(docSnap.id, inv);
+          }
         });
         loaded1 = true;
         updateInvoicesState();
@@ -574,14 +568,18 @@ export function Dashboard({
             invoicesMap.delete(change.doc.id);
           } else {
             const inv = { id: change.doc.id, ...change.doc.data() } as Invoice;
-            const itemSlug = inv.clinicSlug || 'revon-dental';
-            if (itemSlug === activeSlug) invoicesMap.set(change.doc.id, inv);
+            if (matchesClinicScope(inv, activeSlug, activeClinic?.id)) {
+              invoicesMap.set(change.doc.id, inv);
+            } else {
+              invoicesMap.delete(change.doc.id);
+            }
           }
         });
         snapshot.forEach((docSnap) => {
           const inv = { id: docSnap.id, ...docSnap.data() } as Invoice;
-          const itemSlug = inv.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) invoicesMap.set(docSnap.id, inv);
+          if (matchesClinicScope(inv, activeSlug, activeClinic?.id)) {
+            invoicesMap.set(docSnap.id, inv);
+          }
         });
         loaded2 = true;
         updateInvoicesState();
@@ -600,10 +598,9 @@ export function Dashboard({
       const unsub = onSnapshot(q, (snapshot) => {
         const list: Invoice[] = [];
         snapshot.forEach((docSnap) => {
-          const inv = { id: docSnap.id, ...docSnap.data() } as any;
-          const itemSlug = inv.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) {
-            list.push(inv as Invoice);
+          const inv = { id: docSnap.id, ...docSnap.data() } as Invoice;
+          if (matchesClinicScope(inv, activeSlug, activeClinic?.id)) {
+            list.push(inv);
           }
         });
         list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -615,9 +612,9 @@ export function Dashboard({
       });
       return unsub;
     }
-  }, [userProfile, activeSlug, isSuperAdmin]);
+  }, [userProfile, activeSlug, activeClinic?.id, isSuperAdmin]);
 
-  // Load all users for staff in real-time (filtered per clinic)
+  // Load all users for staff in real-time (filtered strictly per clinic)
   useEffect(() => {
     if (userProfile && userProfile.role !== 'patient') {
       const usersRef = collection(db, 'users');
@@ -625,8 +622,7 @@ export function Dashboard({
         const list: UserProfile[] = [];
         snapshot.forEach((docSnap) => {
           const u = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
-          const itemSlug = u.clinicSlug || 'revon-dental';
-          if (itemSlug === activeSlug) {
+          if (matchesClinicScope(u, activeSlug, activeClinic?.id)) {
             list.push(u);
           }
         });
@@ -638,7 +634,7 @@ export function Dashboard({
       });
       return unsub;
     }
-  }, [userProfile, activeSlug, isSuperAdmin]);
+  }, [userProfile, activeSlug, activeClinic?.id, isSuperAdmin]);
 
   // Confirmation Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -699,6 +695,16 @@ export function Dashboard({
     if (initialTab === 'analytics' || initialTab === 'kpis') return 'analytics';
     return 'analytics';
   });
+
+  // Shared operating month/year state so Analytics & KPIs stays locked in sync with Finances & Expenses
+  const [financePeriod, setFinancePeriod] = useState<{ year: number; month: number }>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
+  const handleFinanceMonthChange = (year: number, month: number) => {
+    setFinancePeriod({ year, month });
+  };
+  const [printPreviewDoc, setPrintPreviewDoc] = useState<PrintDocumentPayload | null>(null);
 
   // Synchronize tabs whenever initialTab prop changes
   useEffect(() => {
@@ -985,9 +991,11 @@ export function Dashboard({
 
       if ((!bookDentistId || !dentists.some(d => d.uid === bookDentistId)) && dentists.length > 0) {
         setBookDentistId(dentists[0].uid);
+      } else if (dentists.length === 0 && bookDentistId !== '') {
+        setBookDentistId('');
       }
     }
-  }, [showBookingModal, activeClinic, treatments, dentists, activeLocationId]);
+  }, [showBookingModal, activeClinic, treatments, dentists, activeLocationId, bookDentistId]);
 
   // Filters, Search, and Sort States for Appointments
   type AppointmentSortKey = 
@@ -1008,6 +1016,13 @@ export function Dashboard({
   const [sortKey, setSortKey] = useState<AppointmentSortKey>('dateTime-desc');
   const [staffAppointmentView, setStaffAppointmentView] = useState<'list' | 'calendar' | 'slots'>('list');
   const [patientAppointmentView, setPatientAppointmentView] = useState<'list' | 'calendar' | 'slots'>('list');
+
+  // Reset dentistFilter when active clinic or practitioner roster changes
+  useEffect(() => {
+    if (dentistFilter !== 'all' && !dentists.some(d => d.uid === dentistFilter)) {
+      setDentistFilter('all');
+    }
+  }, [dentists, activeSlug, dentistFilter]);
 
   // Auto-switch bookTime if current slot is booked when date or dentist changes
   useEffect(() => {
@@ -1626,6 +1641,8 @@ export function Dashboard({
         patientEmail: selectedAppointmentForBill.patientEmail,
         dentistId: selectedAppointmentForBill.dentistId,
         dentistName: selectedAppointmentForBill.dentistName,
+        clinicSlug: selectedAppointmentForBill.clinicSlug || activeSlug,
+        clinicId: selectedAppointmentForBill.clinicId || activeClinic?.id,
         treatmentName: selectedAppointmentForBill.treatment,
         items: draftBillItems,
         subtotal,
@@ -1739,287 +1756,24 @@ export function Dashboard({
   }, [users, appointments, patientFilter, patientSearchQuery]);
 
   // ---------------------------------------------------------------------------
-  // Patient Treatment Invoice Printing
+  // Patient Treatment Invoice Printing (Unified In-App A4 Preview & PDF)
   // ---------------------------------------------------------------------------
   const handlePrintInvoice = (invoice: Invoice) => {
-    const invoiceClinic = (clinics || []).find(c => c.slug === invoice.clinicSlug || c.id === invoice.clinicSlug) || activeClinic;
-    const logoToUse = invoiceClinic?.logoUrl || mainLogo;
-    const clinicNameToUse = invoiceClinic?.name || APP_NAME;
+    const invoiceClinic =
+      (clinics || []).find(
+        (c) => c.slug === invoice.clinicSlug || c.id === invoice.clinicSlug
+      ) || activeClinic;
+    const matchedAppt = appointments.find((a) => a.id === invoice.appointmentId) || null;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("Popup blocked! Please allow popups to print the invoice.");
-      return;
-    }
-
-    const itemsHTML = invoice.items.map(item => `
-      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px;">
-        <td style="padding: 10px; text-align: left; color: #1e293b;">${item.name}</td>
-        <td style="padding: 10px; text-align: left; text-transform: capitalize; color: #64748b;">${item.type}</td>
-        <td style="padding: 10px; text-align: center; color: #1e293b;">${item.quantity}</td>
-        <td style="padding: 10px; text-align: right; color: #1e293b;">₹${item.unitPrice.toLocaleString()}</td>
-        <td style="padding: 10px; text-align: right; font-weight: bold; color: #1e293b;">₹${item.total.toLocaleString()}</td>
-      </tr>
-    `).join('');
-
-    const invoiceStatusBadge = invoice.status === 'collected'
-      ? `<span style="background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">Paid (${invoice.paymentMode || 'Cash'})</span>`
-      : `<span style="background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">Payment Pending</span>`;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${clinicNameToUse} Invoice - ${invoice.invoiceNumber}</title>
-          <style>
-            @media print {
-              @page {
-                size: A4;
-                margin: 15mm;
-              }
-              body {
-                background-color: #ffffff;
-                color: #000000;
-              }
-            }
-            body {
-              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-              margin: 0;
-              padding: 0;
-              color: #1e293b;
-              background-color: #f8fafc;
-            }
-            .a4-container {
-              max-width: 800px;
-              margin: 30px auto;
-              background: #ffffff;
-              padding: 40px;
-              border: 1px solid #e2e8f0;
-              border-radius: 12px;
-              box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
-            }
-            @media print {
-              .a4-container {
-                border: none;
-                box-shadow: none;
-                margin: 0;
-                padding: 0;
-              }
-              .no-print {
-                display: none;
-              }
-            }
-            .header-bar {
-              height: 5px;
-              background-color: #1e88e5;
-              border-radius: 6px 6px 0 0;
-              margin-bottom: 25px;
-            }
-            .logo-section {
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              border-bottom: 2px solid #e2e8f0;
-              padding-bottom: 20px;
-              margin-bottom: 25px;
-            }
-            .brand-name {
-              font-size: 24px;
-              font-weight: 800;
-              color: #1e293b;
-              letter-spacing: -0.5px;
-            }
-            .meta-info {
-              text-align: right;
-              font-size: 14px;
-              color: #475569;
-            }
-            .meta-row {
-              margin-bottom: 4px;
-            }
-            .meta-val {
-              font-weight: bold;
-              color: #1e293b;
-            }
-            .detail-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 30px;
-              background-color: #f8fafc;
-              border: 1px solid #f1f5f9;
-              border-radius: 8px;
-              padding: 20px;
-              margin-bottom: 30px;
-            }
-            .detail-title {
-              font-size: 11px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              color: #1e88e5;
-              font-weight: bold;
-              margin-bottom: 8px;
-            }
-            .detail-name {
-              font-size: 16px;
-              font-weight: bold;
-              color: #0f172a;
-              margin-bottom: 4px;
-            }
-            .detail-val {
-              font-size: 13px;
-              color: #475569;
-              line-height: 1.5;
-            }
-            .table-styled {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 30px;
-            }
-            .table-header {
-              background-color: #f1f5f9;
-              font-size: 11px;
-              text-transform: uppercase;
-              color: #475569;
-              font-weight: bold;
-            }
-            .table-header th {
-              padding: 12px 10px;
-            }
-            .summary-section {
-              display: flex;
-              justify-content: flex-end;
-              margin-top: 20px;
-            }
-            .summary-card {
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 15px;
-              width: 250px;
-              font-size: 14px;
-            }
-            .summary-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 8px;
-              color: #475569;
-            }
-            .grand-total {
-              border-top: 2px solid #f1f5f9;
-              padding-top: 10px;
-              margin-top: 10px;
-              font-size: 16px;
-              font-weight: bold;
-              color: #1e88e5;
-            }
-            .footer-section {
-              border-top: 1px solid #e2e8f0;
-              margin-top: 40px;
-              padding-top: 15px;
-              text-align: center;
-              font-size: 12px;
-              color: #94a3b8;
-              font-style: italic;
-            }
-            .print-btn-bar {
-              background-color: #0f172a;
-              padding: 12px 20px;
-              display: flex;
-              justify-content: flex-end;
-              gap: 10px;
-              border-radius: 8px;
-              max-width: 800px;
-              margin: 20px auto 0 auto;
-            }
-            .btn {
-              padding: 8px 16px;
-              border-radius: 6px;
-              font-weight: bold;
-              font-size: 13px;
-              cursor: pointer;
-              border: none;
-            }
-            .btn-primary {
-              background-color: #1e88e5;
-              color: #ffffff;
-            }
-            .btn-secondary {
-              background-color: #334155;
-              color: #ffffff;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-btn-bar no-print">
-            <button class="btn btn-secondary" onclick="window.close()">Cancel</button>
-            <button class="btn btn-primary" onclick="window.print()">Print Invoice</button>
-          </div>
-
-          <div class="a4-container">
-            <div class="header-bar"></div>
-            <div class="logo-section">
-              <div style="display: flex; align-items: center; gap: 15px;">
-                <img src="${logoToUse}" style="height: 55px; width: auto; max-width: 180px; object-fit: contain; border-radius: 6px;" alt="${clinicNameToUse}" />
-                <span style="font-size: 22px; font-weight: bold; color: #0b52a3; font-family: sans-serif;">${clinicNameToUse}</span>
-              </div>
-              <div class="meta-info">
-                <div class="meta-row">Invoice Number: <span class="meta-val">${invoice.invoiceNumber}</span></div>
-                <div class="meta-row">Created Date: <span class="meta-val">${new Date(invoice.createdAt).toLocaleDateString('en-GB')}</span></div>
-              </div>
-            </div>
-
-            <div class="detail-grid">
-              <div>
-                <div class="detail-title">Patient / Billed To</div>
-                <div class="detail-name">${invoice.patientName}</div>
-                <div class="detail-val">Status: Verified Patient Account</div>
-              </div>
-              <div>
-                <div class="detail-title">Attending Clinician</div>
-                <div class="detail-name">${invoice.dentistName}</div>
-                <div class="detail-val">Procedure: ${invoice.treatmentName}</div>
-                <div class="detail-val" style="margin-top: 8px;">${invoiceStatusBadge}</div>
-              </div>
-            </div>
-
-            <table class="table-styled">
-              <thead>
-                <tr class="table-header">
-                  <th style="text-align: left; padding: 12px 10px;">Item Description</th>
-                  <th style="text-align: left; padding: 12px 10px;">Type</th>
-                  <th style="text-align: center; padding: 12px 10px;">Qty</th>
-                  <th style="text-align: right; padding: 12px 10px;">Unit Price</th>
-                  <th style="text-align: right; padding: 12px 10px;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHTML}
-              </tbody>
-            </table>
-
-            <div class="summary-section">
-              <div class="summary-card">
-                <div class="summary-row">
-                  <span>Subtotal</span>
-                  <span style="font-weight: bold; color: #1e293b;">₹${invoice.subtotal.toLocaleString()}</span>
-                </div>
-                <div class="summary-row">
-                  <span>Tax / GST (10%)</span>
-                  <span style="font-weight: bold; color: #1e293b;">₹${invoice.tax.toLocaleString()}</span>
-                </div>
-                <div class="summary-row grand-total">
-                  <span>Grand Total</span>
-                  <span>₹${invoice.totalAmount.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="footer-section">
-              Care Beyond Smiles • Thank you for your visit to REVON!
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    const payload = buildInvoicePrintPayload({
+      invoice,
+      appointment: matchedAppt,
+      clinic: invoiceClinic,
+      fallbackName: APP_NAME,
+      fallbackLogo: mainLogo,
+      preparedBy: userProfile?.displayName || userProfile?.email || 'Clinic Billing Desk'
+    });
+    setPrintPreviewDoc(payload);
   };
 
   // ---------------------------------------------------------------------------
@@ -2072,7 +1826,9 @@ export function Dashboard({
             displayName: editUserName,
             email: editUserEmail,
             phone: editUserPhone,
-            role: editUserRole
+            role: editUserRole,
+            clinicSlug: selectedUserForEdit.clinicSlug || activeSlug,
+            clinicId: selectedUserForEdit.clinicId || activeClinic?.id
           });
           alert("User profile updated successfully!");
           setShowEditUserModal(false);
@@ -2225,7 +1981,8 @@ export function Dashboard({
         phone: newUserPhone || '+91 98765 00000',
         role: newUserRole,
         createdAt: new Date().toISOString(),
-        clinicSlug: activeSlug
+        clinicSlug: activeSlug,
+        clinicId: activeClinic?.id
       });
 
       alert(`Account successfully created for ${newUserName} (${newUserRole})!`);
@@ -3411,7 +3168,13 @@ export function Dashboard({
           {/* TAB 0: EXECUTIVE ANALYTICS & KPIS PANEL (FIRST TAB) */}
           {staffTab === 'analytics' && (permissions.finances?.includes(userProfile.role) || permissions.billing?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="animate-fadeIn">
-              <ExecutiveAnalyticsDashboard userProfile={userProfile} onNavigateTab={handleStaffTabChange} />
+              <ExecutiveAnalyticsDashboard
+                userProfile={userProfile}
+                onNavigateTab={handleStaffTabChange}
+                selectedYear={financePeriod.year}
+                selectedMonth={financePeriod.month}
+                onMonthChange={handleFinanceMonthChange}
+              />
             </div>
           )}
 
@@ -5806,44 +5569,46 @@ export function Dashboard({
                                 .map((u) => (
                                 <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
                                   <td className="p-4">
-                                    <div className="font-bold text-slate-900 font-display flex items-center space-x-2">
-                                      <span className={`h-2 w-2 rounded-full ${
-                                        u.role === 'super-admin' ? 'bg-purple-600' : u.role === 'admin' ? 'bg-amber-500' : u.role === 'dentist' ? 'bg-teal-500' : u.role === 'receptionist' ? 'bg-blue-500' : 'bg-slate-400'
-                                      }`}></span>
-                                      <span>{u.displayName}</span>
-                                    </div>
-                                    <span className="text-[10px] text-slate-400 font-mono font-normal">UID: {u.uid.substring(0, 10)}...</span>
-                                  </td>
-                                  <td className="p-4 font-mono text-slate-600">
-                                    <div>{u.email}</div>
-                                    <div className="text-[10px] text-slate-400">{u.phone || 'No Phone'}</div>
-                                  </td>
-                                  <td className="p-4">
-                                    {u.uid === userProfile?.uid ? (
-                                      <span className="font-bold text-amber-600 uppercase font-mono tracking-wider bg-amber-50 px-2 py-1 rounded">
-                                        {u.role} (YOU)
-                                      </span>
-                                    ) : (
-                                      <select
-                                        value={u.role}
-                                        onChange={(e) => {
-                                          const newRole = e.target.value as UserRole;
-                                          triggerConfirm(
-                                            'Change User Role',
-                                            `Are you sure you want to change the role of ${u.displayName} to ${newRole.toUpperCase()}?`,
-                                            () => handleUpdateUserRole(u.uid, newRole)
-                                          );
-                                        }}
-                                        className="px-2 py-1 border border-slate-200 rounded-md focus:ring-1 focus:ring-revon-blue text-xs font-semibold cursor-pointer"
-                                      >
-                                        <option value="patient">Patient</option>
-                                        <option value="dentist">Dentist</option>
-                                        <option value="receptionist">Receptionist</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="super-admin">Super Admin</option>
-                                      </select>
-                                    )}
-                                  </td>
+                                      <div className="font-bold text-slate-900 font-display flex items-center space-x-2">
+                                        <span className={`h-2 w-2 rounded-full ${
+                                          u.role === 'super-admin' ? 'bg-purple-600' : u.role === 'admin' ? 'bg-amber-500' : isPractitionerRole(u.role) ? 'bg-teal-500' : u.role === 'receptionist' ? 'bg-blue-500' : 'bg-slate-400'
+                                        }`}></span>
+                                        <span>{u.displayName}</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400 font-mono font-normal">UID: {u.uid.substring(0, 10)}...</span>
+                                    </td>
+                                    <td className="p-4 font-mono text-slate-600">
+                                      <div>{u.email}</div>
+                                      <div className="text-[10px] text-slate-400">{u.phone || 'No Phone'}</div>
+                                    </td>
+                                    <td className="p-4">
+                                      {u.uid === userProfile?.uid ? (
+                                        <span className="font-bold text-amber-600 uppercase font-mono tracking-wider bg-amber-50 px-2 py-1 rounded">
+                                          {u.role} (YOU)
+                                        </span>
+                                      ) : (
+                                        <select
+                                          value={u.role}
+                                          onChange={(e) => {
+                                            const newRole = e.target.value as UserRole;
+                                            triggerConfirm(
+                                              'Change User Role',
+                                              `Are you sure you want to change the role of ${u.displayName} to ${newRole.toUpperCase()}?`,
+                                              () => handleUpdateUserRole(u.uid, newRole)
+                                            );
+                                          }}
+                                          className="px-2 py-1 border border-slate-200 rounded-md focus:ring-1 focus:ring-revon-blue text-xs font-semibold cursor-pointer"
+                                        >
+                                          <option value="patient">Patient</option>
+                                          <option value="dentist">Dentist</option>
+                                          <option value="doctor">Doctor</option>
+                                          <option value="specialist">Specialist</option>
+                                          <option value="receptionist">Receptionist</option>
+                                          <option value="admin">Admin</option>
+                                          <option value="super-admin">Super Admin</option>
+                                        </select>
+                                      )}
+                                    </td>
                                   <td className="p-4 text-right">
                                     <div className="flex items-center justify-end space-x-1">
                                       <button
@@ -6316,7 +6081,12 @@ export function Dashboard({
 
           {staffTab === 'finances' && activeClinic?.features?.finances !== false && (permissions.finances?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="animate-fadeIn">
-              <FinanceDashboard userProfile={userProfile} />
+              <FinanceDashboard
+                userProfile={userProfile}
+                selectedYear={financePeriod.year}
+                selectedMonth={financePeriod.month}
+                onMonthChange={handleFinanceMonthChange}
+              />
             </div>
           )}
 
@@ -6723,16 +6493,26 @@ export function Dashboard({
                     <select
                       id="book-dentist-select"
                       required
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-revon-blue text-xs text-slate-800 bg-[#F8FAFC] cursor-pointer"
+                      disabled={dentists.length === 0}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-revon-blue text-xs text-slate-800 bg-[#F8FAFC] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                       value={bookDentistId}
                       onChange={(e) => setBookDentistId(e.target.value)}
                     >
-                      {dentists.map(d => (
-                        <option key={d.uid} value={d.uid}>
-                          {d.displayName} ({d.specialty || 'Consultant Specialist'})
-                        </option>
-                      ))}
+                      {dentists.length === 0 ? (
+                        <option value="">No practitioners registered to this clinic</option>
+                      ) : (
+                        dentists.map(d => (
+                          <option key={d.uid} value={d.uid}>
+                            {d.displayName} ({d.specialty || 'Consultant Specialist'})
+                          </option>
+                        ))
+                      )}
                     </select>
+                    {dentists.length === 0 && (
+                      <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1.5">
+                        No registered doctors are assigned to this clinic yet. Please ask a clinic admin to register a practitioner account.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -6892,8 +6672,8 @@ export function Dashboard({
                   <button
                     id="submit-book-btn"
                     type="submit"
-                    disabled={bookingLoading}
-                    className="px-6 py-2 bg-revon-blue text-white text-xs font-bold rounded-xl hover:bg-opacity-90 disabled:opacity-50 cursor-pointer shadow-md shadow-revon-blue/10"
+                    disabled={bookingLoading || dentists.length === 0}
+                    className="px-6 py-2 bg-revon-blue text-white text-xs font-bold rounded-xl hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-md shadow-revon-blue/10"
                   >
                     {bookingLoading ? 'Processing...' : 'Confirm Reservation'}
                   </button>
@@ -7686,8 +7466,8 @@ export function Dashboard({
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Assigned Account Role</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {(['dentist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                  {(['dentist', 'doctor', 'specialist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -7797,8 +7577,8 @@ export function Dashboard({
                     You cannot modify your own role.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {(['dentist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                    {(['dentist', 'doctor', 'specialist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
                       <button
                         key={r}
                         type="button"
@@ -8673,6 +8453,12 @@ export function Dashboard({
         isOpen={!!selectedPostOpAppointment}
         onClose={() => setSelectedPostOpAppointment(null)}
         appointment={selectedPostOpAppointment}
+      />
+
+      {/* Unified In-App A4 Clinical Stationery Print & PDF Modal */}
+      <PrintPreviewModal
+        documentData={printPreviewDoc}
+        onClose={() => setPrintPreviewDoc(null)}
       />
     </div>
   );
