@@ -25,7 +25,8 @@ import { FinanceDashboard } from './FinanceDashboard';
 import { ExecutiveAnalyticsDashboard } from './ExecutiveAnalyticsDashboard';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { buildInvoicePrintPayload, PrintDocumentPayload } from '../utils/printService';
-import { matchesClinicScope, isPractitionerRole } from '../utils/clinicDoctorScope';
+import { matchesClinicScope, isPractitionerRole, isAdminRole } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 // @ts-ignore
@@ -140,10 +141,7 @@ export function Dashboard({
   const activeSlug = activeClinic?.slug || 'revon-dental';
   const roleLower = (userProfile?.role || '').toLowerCase();
   const isSuperAdmin = Boolean(userProfile?.isSuperAdmin || roleLower === 'super-admin' || roleLower === 'superadmin');
-  const isAdminOrSuper = Boolean(
-    isSuperAdmin ||
-    roleLower === 'admin'
-  );
+  const isAdminOrSuper = isAdminRole(userProfile?.role, isSuperAdmin);
 
   const { appointments, loading: appLoading, error: appError, createAppointment, updateAppointmentStatus, deleteAppointment } = useAppointments();
   const { dentists, treatments, reminderLogs, triggerManualReminder, surgeons, createSurgeon, updateSurgeon, deleteSurgeon, socialHandles, updateSocialHandles, services, createService, updateService, deleteService, createReview } = useClinicData();
@@ -220,13 +218,13 @@ export function Dashboard({
   // Real-Time States for Persistent Settings & Custom Collections
   // ---------------------------------------------------------------------------
   const [permissions, setPermissions] = useState<MenuPermissions>({
-    appointments: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-    reminders: ['admin', 'super-admin', 'receptionist'],
-    patients: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-    billing: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-    finances: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-    patientHistory: ['admin', 'super-admin', 'dentist', 'doctor', 'specialist'],
-    reviews: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
+    appointments: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+    reminders: ['admin', 'super-admin', 'director', 'receptionist'],
+    patients: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+    billing: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+    finances: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+    patientHistory: ['admin', 'super-admin', 'director', 'dentist', 'doctor', 'specialist'],
+    reviews: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist']
   });
   
   const [bills, setBills] = useState<Bill[]>([]);
@@ -387,24 +385,24 @@ export function Dashboard({
       if (docSnap.exists()) {
         const data = docSnap.data();
         const loaded: MenuPermissions = {
-          appointments: data.appointments || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          reminders: data.reminders || ['admin', 'super-admin', 'receptionist'],
-          patients: data.patients || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          billing: data.billing || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          finances: data.finances || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          patientHistory: data.patientHistory || ['admin', 'super-admin', 'dentist', 'doctor', 'specialist'],
-          reviews: data.reviews || ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
+          appointments: data.appointments || ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          reminders: data.reminders || ['admin', 'super-admin', 'director', 'receptionist'],
+          patients: data.patients || ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          billing: data.billing || ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          finances: data.finances || ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          patientHistory: data.patientHistory || ['admin', 'super-admin', 'director', 'dentist', 'doctor', 'specialist'],
+          reviews: data.reviews || ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist']
         };
         setPermissions(loaded);
       } else {
         setPermissions({
-          appointments: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          reminders: ['admin', 'super-admin', 'receptionist'],
-          patients: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          billing: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          finances: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist'],
-          patientHistory: ['admin', 'super-admin', 'dentist', 'doctor', 'specialist'],
-          reviews: ['admin', 'super-admin', 'dentist', 'receptionist', 'doctor', 'specialist']
+          appointments: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          reminders: ['admin', 'super-admin', 'director', 'receptionist'],
+          patients: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          billing: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          finances: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist'],
+          patientHistory: ['admin', 'super-admin', 'director', 'dentist', 'doctor', 'specialist'],
+          reviews: ['admin', 'super-admin', 'director', 'dentist', 'receptionist', 'doctor', 'specialist']
         });
       }
       setLoadingPermissions(false);
@@ -841,9 +839,11 @@ export function Dashboard({
       const updatedDependents = [...existingDependents, newDep];
       const cleanDependents = JSON.parse(JSON.stringify(updatedDependents));
 
-      await setDoc(patientRef, {
-        dependents: cleanDependents
-      }, { merge: true });
+      await executeFirestoreWrite(() =>
+        setDoc(patientRef, {
+          dependents: cleanDependents
+        }, { merge: true })
+      );
 
       alert(`Successfully registered ${newDep.name} (${newDep.relationship}) under ${targetDisplayName}!`);
       
@@ -882,7 +882,9 @@ export function Dashboard({
       const updatedDependents = currentDependents.filter(d => d.id !== dependentId);
       const cleanDependents = JSON.parse(JSON.stringify(updatedDependents));
 
-      await setDoc(patientRef, { dependents: cleanDependents }, { merge: true });
+      await executeFirestoreWrite(() =>
+        setDoc(patientRef, { dependents: cleanDependents }, { merge: true })
+      );
       alert("Family member removed successfully.");
     } catch (err: any) {
       console.error("Failed to remove dependent:", err);
@@ -1540,26 +1542,28 @@ export function Dashboard({
       `Are you sure you want to permanently delete the bill for ${patientName} (${amount ? `₹${amount}` : 'Pending'})? This will remove the record from both the Appointment Monitor and Billing & Receipts.`,
       async () => {
         try {
-          const promises: Promise<void>[] = [];
-          
-          // Delete from bills collection
-          promises.push(deleteDoc(doc(db, 'bills', app.id)));
-          if (bill?.id && bill.id !== app.id) {
-            promises.push(deleteDoc(doc(db, 'bills', bill.id)));
-          }
+          await executeFirestoreWrite(async () => {
+            const promises: Promise<void>[] = [];
 
-          // Delete from invoices collection
-          const invoicesRef = collection(db, 'invoices');
-          const qInv = query(invoicesRef, where('appointmentId', '==', app.id));
-          const invSnap = await getDocs(qInv);
-          invSnap.forEach((d) => {
-            promises.push(deleteDoc(doc(db, 'invoices', d.id)));
+            // Delete from bills collection
+            promises.push(deleteDoc(doc(db, 'bills', app.id)));
+            if (bill?.id && bill.id !== app.id) {
+              promises.push(deleteDoc(doc(db, 'bills', bill.id)));
+            }
+
+            // Delete from invoices collection
+            const invoicesRef = collection(db, 'invoices');
+            const qInv = query(invoicesRef, where('appointmentId', '==', app.id));
+            const invSnap = await getDocs(qInv);
+            invSnap.forEach((d) => {
+              promises.push(deleteDoc(doc(db, 'invoices', d.id)));
+            });
+            if (inv?.id) {
+              promises.push(deleteDoc(doc(db, 'invoices', inv.id)));
+            }
+
+            await Promise.all(promises);
           });
-          if (inv?.id) {
-            promises.push(deleteDoc(doc(db, 'invoices', inv.id)));
-          }
-
-          await Promise.all(promises);
 
           // Optimistically update local states immediately
           setBills(prev => prev.filter(b => b.id !== app.id && b.appointmentId !== app.id));
@@ -1634,23 +1638,25 @@ export function Dashboard({
 
     try {
       // Save bill record using the Appointment ID to ensure 1-to-1 parity
-      await setDoc(doc(db, 'bills', selectedAppointmentForBill.id), {
-        appointmentId: selectedAppointmentForBill.id,
-        patientId: selectedAppointmentForBill.patientId,
-        patientName: selectedAppointmentForBill.patientName,
-        patientEmail: selectedAppointmentForBill.patientEmail,
-        dentistId: selectedAppointmentForBill.dentistId,
-        dentistName: selectedAppointmentForBill.dentistName,
-        clinicSlug: selectedAppointmentForBill.clinicSlug || activeSlug,
-        clinicId: selectedAppointmentForBill.clinicId || activeClinic?.id,
-        treatmentName: selectedAppointmentForBill.treatment,
-        items: draftBillItems,
-        subtotal,
-        tax,
-        totalAmount,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
+      await executeFirestoreWrite(() =>
+        setDoc(doc(db, 'bills', selectedAppointmentForBill.id), {
+          appointmentId: selectedAppointmentForBill.id,
+          patientId: selectedAppointmentForBill.patientId,
+          patientName: selectedAppointmentForBill.patientName,
+          patientEmail: selectedAppointmentForBill.patientEmail,
+          dentistId: selectedAppointmentForBill.dentistId,
+          dentistName: selectedAppointmentForBill.dentistName,
+          clinicSlug: selectedAppointmentForBill.clinicSlug || activeSlug,
+          clinicId: selectedAppointmentForBill.clinicId || activeClinic?.id,
+          treatmentName: selectedAppointmentForBill.treatment,
+          items: draftBillItems,
+          subtotal,
+          tax,
+          totalAmount,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        })
+      );
 
       alert("Dental billing details successfully generated and routed to the Receptionist queue!");
       setShowDraftBillModal(false);
@@ -1674,12 +1680,14 @@ export function Dashboard({
     setCollectingPayment(true);
     try {
       const billRef = doc(db, 'bills', selectedBillForCollection.id);
-      await updateDoc(billRef, {
-        status: 'collected',
-        paymentMode: selectedPaymentMode,
-        paymentDate: new Date().toISOString(),
-        collectedBy: userProfile?.displayName || 'Clinic Receptionist'
-      });
+      await executeFirestoreWrite(() =>
+        updateDoc(billRef, {
+          status: 'collected',
+          paymentMode: selectedPaymentMode,
+          paymentDate: new Date().toISOString(),
+          collectedBy: userProfile?.displayName || 'Clinic Receptionist'
+        })
+      );
 
       alert(`Payment of ₹${selectedBillForCollection.totalAmount} collected via ${selectedPaymentMode}! Receipt generated.`);
       setShowCollectPaymentModal(false);
@@ -1785,7 +1793,7 @@ export function Dashboard({
       return;
     }
     try {
-      await updateDoc(doc(db, 'users', userId), { role: targetRole });
+      await executeFirestoreWrite(() => updateDoc(doc(db, 'users', userId), { role: targetRole }));
       alert("User role successfully updated in Firestore!");
     } catch (err: any) {
       alert("Failed to update user role: " + err.message);
@@ -1798,7 +1806,7 @@ export function Dashboard({
       return;
     }
     try {
-      await deleteDoc(doc(db, 'users', userId));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'users', userId)));
       alert("User profile successfully deleted from Firestore.");
       setDeleteConfirmUid(null);
     } catch (err: any) {
@@ -1822,14 +1830,16 @@ export function Dashboard({
         setEditUserError(null);
         try {
           const userRef = doc(db, 'users', selectedUserForEdit.uid);
-          await updateDoc(userRef, {
-            displayName: editUserName,
-            email: editUserEmail,
-            phone: editUserPhone,
-            role: editUserRole,
-            clinicSlug: selectedUserForEdit.clinicSlug || activeSlug,
-            clinicId: selectedUserForEdit.clinicId || activeClinic?.id
-          });
+          await executeFirestoreWrite(() =>
+            updateDoc(userRef, {
+              displayName: editUserName,
+              email: editUserEmail,
+              phone: editUserPhone,
+              role: editUserRole,
+              clinicSlug: selectedUserForEdit.clinicSlug || activeSlug,
+              clinicId: selectedUserForEdit.clinicId || activeClinic?.id
+            })
+          );
           alert("User profile updated successfully!");
           setShowEditUserModal(false);
           setSelectedUserForEdit(null);
@@ -1974,16 +1984,18 @@ export function Dashboard({
       await secondarySignOut(secondaryAuth);
 
       // 4. Create Firestore document using the primary db instance
-      await setDoc(doc(db, 'users', newUid), {
-        uid: newUid,
-        displayName: newUserName,
-        email: newUserEmail,
-        phone: newUserPhone || '+91 98765 00000',
-        role: newUserRole,
-        createdAt: new Date().toISOString(),
-        clinicSlug: activeSlug,
-        clinicId: activeClinic?.id
-      });
+      await executeFirestoreWrite(() =>
+        setDoc(doc(db, 'users', newUid), {
+          uid: newUid,
+          displayName: newUserName,
+          email: newUserEmail,
+          phone: newUserPhone || '+91 98765 00000',
+          role: newUserRole,
+          createdAt: new Date().toISOString(),
+          clinicSlug: activeSlug,
+          clinicId: activeClinic?.id
+        })
+      );
 
       alert(`Account successfully created for ${newUserName} (${newUserRole})!`);
       
@@ -2017,7 +2029,7 @@ export function Dashboard({
 
     try {
       const permRef = doc(db, 'settings', 'menu_permissions');
-      await updateDoc(permRef, { [menuKey]: updatedRoles });
+      await executeFirestoreWrite(() => updateDoc(permRef, { [menuKey]: updatedRoles }));
     } catch (err: any) {
       alert("Failed to adjust tab permissions: " + err.message);
     }
@@ -3179,7 +3191,7 @@ export function Dashboard({
           )}
 
           {/* TAB 1: APPOINTMENTS PANEL */}
-          {staffTab === 'appointments' && activeClinic?.features?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
+          {staffTab === 'appointments' && activeClinic?.features?.appointments !== false && (permissions.appointments?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="space-y-6 animate-fadeIn">
               
               {/* Real-time Clinic Live Status & Doctor Availability Quick-Toggle Bar */}
@@ -3447,7 +3459,7 @@ export function Dashboard({
                       const matchingBill = bills.find(b => b.id === app.id || b.appointmentId === app.id);
                       const matchingInvoice = invoices.find(inv => inv.appointmentId === app.id);
                       const hasBillOrInvoice = !!(matchingBill || matchingInvoice);
-                      const isStaff = userProfile?.role === 'dentist' || userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || userProfile?.role === 'receptionist' || userProfile?.isSuperAdmin;
+                      const isStaff = Boolean(userProfile && userProfile.role !== 'patient');
 
                       return (
                         <div key={app.id} className="p-5 hover:bg-slate-50/40 dark:hover:bg-slate-800/30 transition-colors grid md:grid-cols-4 gap-4 items-center">
@@ -3670,7 +3682,7 @@ export function Dashboard({
           )}
 
           {/* TAB 2: REMINDERS LOG VIEW */}
-          {staffTab === 'reminders' && activeClinic?.features?.reminders !== false && (permissions.reminders?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
+          {staffTab === 'reminders' && activeClinic?.features?.reminders !== false && (permissions.reminders?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm animate-fadeIn">
               <div className="p-6 border-b border-slate-100 bg-slate-50/80">
                 <h3 className="font-bold text-slate-900 text-sm font-display">Automated Email Notification Archives</h3>
@@ -3743,7 +3755,7 @@ export function Dashboard({
           )}
 
           {/* TAB 3: PATIENTS DIRECTORY */}
-          {staffTab === 'patients' && (permissions.patients?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
+          {staffTab === 'patients' && (permissions.patients?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm animate-fadeIn">
               <div className="p-6 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center flex-wrap gap-4">
                 <div>
@@ -3920,7 +3932,7 @@ export function Dashboard({
                               >
                                 <span>Book Visit</span>
                               </button>
-                              {(userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin || permissions.patientHistory?.includes(userProfile.role)) && (
+                              {(isAdminOrSuper || permissions.patientHistory?.includes(userProfile.role)) && (
                                 <button
                                   onClick={() => {
                                     setHistoryPatient(p);
@@ -3958,7 +3970,7 @@ export function Dashboard({
           )}
 
           {/* TAB 4: CLINIC BILLING & RECEIPTS WORKSPACE */}
-          {staffTab === 'billing' && activeClinic?.features?.billing !== false && (permissions.billing?.includes(userProfile.role) || userProfile.role === 'admin' || userProfile.role === 'super-admin' || userProfile.isSuperAdmin) && (
+          {staffTab === 'billing' && activeClinic?.features?.billing !== false && (permissions.billing?.includes(userProfile.role) || isAdminOrSuper) && (
             <div className="space-y-6 animate-fadeIn">
               
               {/* Workspace Header */}
@@ -4061,7 +4073,7 @@ export function Dashboard({
                                   </span>
                                 </td>
                                 <td className="p-4 text-right space-x-2">
-                                  {bill.status === 'pending' && (userProfile?.role === 'receptionist' || userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || userProfile?.isSuperAdmin) && (
+                                  {bill.status === 'pending' && (userProfile?.role === 'receptionist' || isAdminOrSuper) && (
                                     <button
                                       onClick={() => handleOpenCollectPaymentModal(bill)}
                                       className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[10px] shadow-sm cursor-pointer"
@@ -4120,7 +4132,7 @@ export function Dashboard({
                         Clinic Administration Console
                       </h3>
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 rounded-full border border-amber-500/30">
-                        {isSuperAdmin ? 'Super Admin' : 'Admin'}
+                        {isSuperAdmin ? 'Super Admin' : userProfile?.role === 'director' ? 'Director (Doctor + Admin)' : 'Admin'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -5078,7 +5090,7 @@ export function Dashboard({
                               <th className="p-4">Interactive Menu / Tab</th>
                               <th className="p-4 text-center">Dentist Access</th>
                               <th className="p-4 text-center">Receptionist Access</th>
-                              <th className="p-4 text-center text-amber-600">Admin Access (Default)</th>
+                              <th className="p-4 text-center text-amber-600">Admin & Director (Default)</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -5571,7 +5583,7 @@ export function Dashboard({
                                   <td className="p-4">
                                       <div className="font-bold text-slate-900 font-display flex items-center space-x-2">
                                         <span className={`h-2 w-2 rounded-full ${
-                                          u.role === 'super-admin' ? 'bg-purple-600' : u.role === 'admin' ? 'bg-amber-500' : isPractitionerRole(u.role) ? 'bg-teal-500' : u.role === 'receptionist' ? 'bg-blue-500' : 'bg-slate-400'
+                                          u.role === 'super-admin' ? 'bg-purple-600' : u.role === 'director' ? 'bg-indigo-600' : u.role === 'admin' ? 'bg-amber-500' : isPractitionerRole(u.role) ? 'bg-teal-500' : u.role === 'receptionist' ? 'bg-blue-500' : 'bg-slate-400'
                                         }`}></span>
                                         <span>{u.displayName}</span>
                                       </div>
@@ -5603,6 +5615,7 @@ export function Dashboard({
                                           <option value="dentist">Dentist</option>
                                           <option value="doctor">Doctor</option>
                                           <option value="specialist">Specialist</option>
+                                          <option value="director">Director (Doctor + Admin)</option>
                                           <option value="receptionist">Receptionist</option>
                                           <option value="admin">Admin</option>
                                           <option value="super-admin">Super Admin</option>
@@ -7467,7 +7480,7 @@ export function Dashboard({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Assigned Account Role</label>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                  {(['dentist', 'doctor', 'specialist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
+                  {(['dentist', 'doctor', 'specialist', 'director', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -7578,7 +7591,7 @@ export function Dashboard({
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                    {(['dentist', 'doctor', 'specialist', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
+                    {(['dentist', 'doctor', 'specialist', 'director', 'receptionist', 'admin', 'super-admin', 'patient'] as UserRole[]).map((r) => (
                       <button
                         key={r}
                         type="button"

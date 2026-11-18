@@ -20,6 +20,8 @@ import {
   SupportQuery, 
   QueryReply 
 } from '../types';
+import { isAdminRole } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 import { 
   Megaphone, 
   LifeBuoy, 
@@ -45,8 +47,8 @@ export function SupportSystem() {
   const activeSlug = activeClinic?.slug || 'revon-dental';
   const isSuperAdmin = Boolean(userProfile?.isSuperAdmin);
 
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || isSuperAdmin;
-  const isStaff = userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || userProfile?.role === 'dentist' || userProfile?.role === 'receptionist' || isSuperAdmin;
+  const isAdmin = isAdminRole(userProfile?.role, isSuperAdmin);
+  const isStaff = Boolean(userProfile && userProfile.role !== 'patient');
 
   // Tabs: 'notifications' | 'support'
   const [activeTab, setActiveTab] = useState<'notifications' | 'support'>('notifications');
@@ -182,7 +184,7 @@ export function SupportSystem() {
         createdBy: userProfile?.displayName || 'Administrator'
       };
 
-      await addDoc(collection(db, 'notifications'), announcePayload);
+      await executeFirestoreWrite(() => addDoc(collection(db, 'notifications'), announcePayload));
       setNewAnnounceTitle('');
       setNewAnnounceContent('');
       alert("Announcement published successfully!");
@@ -196,7 +198,7 @@ export function SupportSystem() {
   const handleDeleteAnnouncement = async (id: string) => {
     if (!confirm("Are you sure you want to delete this announcement?")) return;
     try {
-      await deleteDoc(doc(db, 'notifications', id));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'notifications', id)));
       alert("Announcement deleted successfully.");
     } catch (err: any) {
       alert("Failed to delete: " + err.message);
@@ -223,7 +225,7 @@ export function SupportSystem() {
         createdAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, 'support_queries'), queryPayload);
+      await executeFirestoreWrite(() => addDoc(collection(db, 'support_queries'), queryPayload));
       setQuerySubject('');
       setQueryMessage('');
       alert("Your support query/feedback has been submitted! An administrator will reply soon.");
@@ -250,18 +252,22 @@ export function SupportSystem() {
         createdAt: new Date().toISOString()
       };
 
-      await addDoc(repliesRef, replyPayload);
+      await executeFirestoreWrite(() => addDoc(repliesRef, replyPayload));
 
       // If clinical staff replies, update parent query status to 'replied'
       if (isStaff) {
-        await updateDoc(doc(db, 'support_queries', selectedQueryId), {
-          status: 'replied'
-        });
+        await executeFirestoreWrite(() =>
+          updateDoc(doc(db, 'support_queries', selectedQueryId), {
+            status: 'replied'
+          })
+        );
       } else {
         // Patient replies back, we can set back to 'pending' to notify admin
-        await updateDoc(doc(db, 'support_queries', selectedQueryId), {
-          status: 'pending'
-        });
+        await executeFirestoreWrite(() =>
+          updateDoc(doc(db, 'support_queries', selectedQueryId), {
+            status: 'pending'
+          })
+        );
       }
 
       setNewReplyMessage('');
@@ -275,7 +281,7 @@ export function SupportSystem() {
   const handleDeleteQuery = async (id: string) => {
     if (!confirm("Are you sure you want to permanently delete this support ticket?")) return;
     try {
-      await deleteDoc(doc(db, 'support_queries', id));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'support_queries', id)));
       if (selectedQueryId === id) setSelectedQueryId(null);
       alert("Ticket deleted.");
     } catch (err: any) {
@@ -800,13 +806,13 @@ export function SupportSystem() {
                           <div 
                             key={r.id} 
                             className={`p-4 rounded-2xl max-w-[85%] text-xs space-y-1.5 text-left ${
-                              r.authorRole === 'admin' || r.authorRole === 'dentist' || r.authorRole === 'receptionist'
+                              r.authorRole && r.authorRole.toLowerCase() !== 'patient'
                                 ? 'bg-amber-50 border border-amber-100 ml-auto' 
                                 : 'bg-blue-50/70 border border-blue-100'
                             }`}
                           >
                             <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 gap-4">
-                              <span className={r.authorRole === 'admin' || r.authorRole === 'dentist' || r.authorRole === 'receptionist' ? 'text-amber-800' : 'text-blue-800'}>
+                              <span className={r.authorRole && r.authorRole.toLowerCase() !== 'patient' ? 'text-amber-800' : 'text-blue-800'}>
                                 {r.authorName} ({r.authorRole.toUpperCase()})
                               </span>
                               <span className="font-mono text-slate-400">{new Date(r.createdAt).toLocaleTimeString()}</span>

@@ -8,6 +8,7 @@ import { ZFCreationsBrand } from './ZFCreationsBrand';
 import { SocialHandle } from '../types';
 import { ClinicFacilitiesPortfolioSection } from './ClinicFacilitiesPortfolioSection';
 import { PortfolioSlideshow } from './PortfolioSlideshow';
+import { resolveEffectiveLiveStatus } from '../utils/firestoreUtils';
 import { motion, AnimatePresence } from 'motion/react';
 // @ts-ignore
 import clinicReceptionImg from '../assets/images/clinic_reception_1784288696289.jpg';
@@ -151,6 +152,12 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
   const [newReviewComment, setNewReviewComment] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState(false);
+
+  // Effective live operational status evaluated cleanly at read time
+  const effectiveLiveStatus = useMemo(
+    () => resolveEffectiveLiveStatus(activeClinic?.liveStatus),
+    [activeClinic?.liveStatus]
+  );
 
   // Reviews Auto-sliding Carousel States
   const publishedReviews = useMemo(() => {
@@ -338,8 +345,8 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                   </div>
                   {/* Real-time Clinic Live Operational Status */}
                   {(() => {
-                    const status = activeClinic?.liveStatus?.statusMode || (activeClinic?.liveStatus as any)?.status || 'open';
-                    const scheduledUntil = activeClinic?.liveStatus?.scheduledUntil;
+                    const status = effectiveLiveStatus.statusMode || (effectiveLiveStatus as any)?.status || 'open';
+                    const scheduledUntil = effectiveLiveStatus.scheduledUntil;
 
                     if (status === 'lunch_break') {
                       return (
@@ -405,21 +412,21 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-bold text-slate-800 dark:text-slate-200">Opening Hours</h4>
-                        {(activeClinic?.liveStatus?.statusMode === 'lunch_break' || (activeClinic?.liveStatus as any)?.status === 'lunch_break') && (
+                        {(effectiveLiveStatus.statusMode === 'lunch_break' || (effectiveLiveStatus as any)?.status === 'lunch_break') && (
                           <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                            Resumes {activeClinic?.liveStatus?.expectedResumeTime || '2:00 PM'}
+                            Resumes {effectiveLiveStatus.expectedResumeTime || '2:00 PM'}
                           </span>
                         )}
-                        {(activeClinic?.liveStatus?.statusMode === 'emergency_only' || (activeClinic?.liveStatus as any)?.status === 'emergency_only') && (
+                        {(effectiveLiveStatus.statusMode === 'emergency_only' || (effectiveLiveStatus as any)?.status === 'emergency_only') && (
                           <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
                             Emergency Patients Only
                           </span>
                         )}
                       </div>
                       <p className="text-slate-500 dark:text-slate-400">{selectedLocation?.workingHours || 'Mon - Sat: 09:00 AM - 08:00 PM'}</p>
-                      {(activeClinic?.liveStatus?.customNote || (activeClinic?.liveStatus as any)?.statusNote) && (
+                      {(effectiveLiveStatus.customNote || (effectiveLiveStatus as any)?.statusNote) && (
                         <p className="text-[11px] text-teal-700 dark:text-teal-300 font-medium mt-1 bg-teal-50/80 dark:bg-teal-950/60 border border-teal-200/60 dark:border-teal-800/60 px-2 py-0.5 rounded-md inline-block">
-                          Note: {activeClinic?.liveStatus?.customNote || (activeClinic?.liveStatus as any)?.statusNote}
+                          Note: {effectiveLiveStatus.customNote || (effectiveLiveStatus as any)?.statusNote}
                         </p>
                       )}
                     </div>
@@ -547,7 +554,7 @@ export function LandingPage({ onNavigate, initialSection }: LandingPageProps) {
 
                         {/* Real-time Doctor Availability Badge */}
                         {(() => {
-                          const docAvailMap = activeClinic?.liveStatus?.doctorAvailability || {};
+                          const docAvailMap = effectiveLiveStatus.doctorAvailability || {};
                           const liveDoc = docAvailMap[doc.id] || 
                             Object.values(docAvailMap).find((d: any) => (d.dentistId === doc.id || d.doctorId === doc.id || d.dentistName?.toLowerCase() === doc.displayName?.toLowerCase() || d.doctorName?.toLowerCase() === doc.displayName?.toLowerCase()));
                           const status = liveDoc?.status || 'available';

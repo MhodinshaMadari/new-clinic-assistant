@@ -23,9 +23,11 @@ import { buildInvoicePrintPayload, PrintDocumentPayload } from '../utils/printSe
 import {
   filterClinicRegisteredDoctors,
   findRegisteredDoctorMatch,
+  isAdminRole,
   isPractitionerRole,
   matchesClinicScope
 } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 import { 
   Plus, Trash2, Download, Printer, Search, Filter, 
   CheckCircle, Clock, AlertCircle, FileText, ChevronDown, User, Calendar, RefreshCw, X,
@@ -443,36 +445,38 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
         } : {})
       });
 
-      await addDoc(collection(db, 'invoices'), invoiceData);
+      await executeFirestoreWrite(() => addDoc(collection(db, 'invoices'), invoiceData));
       
       // Sync with bills collection if linked to an appointment
       if (selectedAppointment?.id && selectedAppointment.id !== 'manual') {
         try {
-          await setDoc(doc(db, 'bills', selectedAppointment.id), sanitizeFirestoreData({
-            appointmentId: selectedAppointment.id,
-            patientId: matchedPatientId,
-            patientName: patientName.trim(),
-            patientEmail: patientEmail.trim(),
-            dentistId: resolvedDentistId,
-            dentistName: resolvedDentistName,
-            treatmentName: treatmentName || 'General Consultation',
-            items: lineItems,
-            subtotal,
-            tax,
-            totalAmount,
-            paidAmount: initialPaid,
-            remainingAmount: initialRemaining,
-            payments: initialPayments,
-            status,
-            clinicSlug: activeSlug,
-            clinicId: activeClinicId,
-            createdAt: new Date().toISOString(),
-            ...(status === 'collected' ? {
-              paymentMode: 'Cash',
-              paymentDate: new Date().toISOString(),
-              collectedBy: collectorName
-            } : {})
-          }), { merge: true });
+          await executeFirestoreWrite(() =>
+            setDoc(doc(db, 'bills', selectedAppointment.id), sanitizeFirestoreData({
+              appointmentId: selectedAppointment.id,
+              patientId: matchedPatientId,
+              patientName: patientName.trim(),
+              patientEmail: patientEmail.trim(),
+              dentistId: resolvedDentistId,
+              dentistName: resolvedDentistName,
+              treatmentName: treatmentName || 'General Consultation',
+              items: lineItems,
+              subtotal,
+              tax,
+              totalAmount,
+              paidAmount: initialPaid,
+              remainingAmount: initialRemaining,
+              payments: initialPayments,
+              status,
+              clinicSlug: activeSlug,
+              clinicId: activeClinicId,
+              createdAt: new Date().toISOString(),
+              ...(status === 'collected' ? {
+                paymentMode: 'Cash',
+                paymentDate: new Date().toISOString(),
+                collectedBy: collectorName
+              } : {})
+            }), { merge: true })
+          );
         } catch (syncErr) {
           console.error("Error syncing bill record:", syncErr);
         }
@@ -484,7 +488,7 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
       setPatientName('');
       setPatientEmail('');
       setPatientPhone('');
-      setDentistName(userProfile?.role === 'dentist' ? (userProfile?.displayName || '') : '');
+      setDentistName(isPractitionerRole(userProfile?.role) ? (userProfile?.displayName || '') : '');
       setTreatmentName('');
       setLineItems([]);
       setStatus('pending');
@@ -556,13 +560,13 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
         payments: updatedPayments
       });
 
-      await updateDoc(invoiceRef, updatePayload);
+      await executeFirestoreWrite(() => updateDoc(invoiceRef, updatePayload));
 
       // Synchronize matching bill record in bills collection if linked to an appointment
       if (collectPaymentInvoice.appointmentId && collectPaymentInvoice.appointmentId !== 'manual') {
         try {
           const billRef = doc(db, 'bills', collectPaymentInvoice.appointmentId);
-          await updateDoc(billRef, updatePayload);
+          await executeFirestoreWrite(() => updateDoc(billRef, updatePayload));
         } catch (syncErr) {
           console.warn("Could not find direct bill with appointmentId:", syncErr);
         }
@@ -583,12 +587,12 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
   const handleDeleteInvoice = async (invoiceId: string) => {
     try {
       const targetInvoice = invoices.find(i => i.id === invoiceId);
-      await deleteDoc(doc(db, 'invoices', invoiceId));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'invoices', invoiceId)));
 
       // Also clean up linked bill in bills collection
       if (targetInvoice?.appointmentId && targetInvoice.appointmentId !== 'manual') {
         try {
-          await deleteDoc(doc(db, 'bills', targetInvoice.appointmentId));
+          await executeFirestoreWrite(() => deleteDoc(doc(db, 'bills', targetInvoice.appointmentId)));
         } catch (syncErr) {
           console.warn("Could not delete matching bill record:", syncErr);
         }
@@ -1000,8 +1004,8 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
           </div>
         </div>
 
-        {/* Generate Invoice Action (Allowed for Dentists, Receptionists, Admins, Super Admins) */}
-        {['dentist', 'receptionist', 'admin', 'super-admin'].includes(userProfile?.role) || isSuperAdmin ? (
+        {/* Generate Invoice Action (Allowed for Practitioners, Receptionists, Directors, Admins, Super Admins) */}
+        {isPractitionerRole(userProfile?.role) || userProfile?.role === 'receptionist' || isAdminRole(userProfile?.role, isSuperAdmin) ? (
           <button
             onClick={() => {
               setLineItems([]);
@@ -1110,7 +1114,7 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
                         )}
                       </td>
                       <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                        {(inv.status === 'pending' || inv.status === 'partially_paid') && (['receptionist', 'admin', 'super-admin'].includes(userProfile?.role) || isSuperAdmin) && (
+                        {(inv.status === 'pending' || inv.status === 'partially_paid') && (userProfile?.role === 'receptionist' || isAdminRole(userProfile?.role, isSuperAdmin)) && (
                           <button
                             onClick={() => {
                               setCollectPaymentInvoice(inv);
@@ -1142,7 +1146,7 @@ export function Billing({ userProfile: propsUserProfile }: BillingProps) {
                           Print
                         </button>
 
-                        {(userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || isSuperAdmin) && (
+                        {isAdminRole(userProfile?.role, isSuperAdmin) && (
                           <button
                             onClick={() => triggerConfirm(
                               'Delete Invoice',

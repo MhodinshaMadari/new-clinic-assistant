@@ -12,6 +12,13 @@ import {
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
 import { UserProfile, UserRole } from '../types';
+import {
+  executeFirestoreWrite,
+  isFirestoreQuotaExhausted,
+  isQuotaExhaustedError,
+  markFirestoreQuotaExhausted,
+  runWithWriteTimeout
+} from '../utils/firestoreUtils';
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -55,22 +62,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (userSnap.exists()) {
         const data = userSnap.data() as UserProfile;
-        let needsUpdate = false;
-        const updates: Partial<UserProfile> = {};
 
         if (isSuperAdminUser && data.role !== 'super-admin') {
-          updates.role = 'super-admin';
           data.role = 'super-admin';
-          needsUpdate = true;
         }
 
         if (isSuperAdminUser && !data.isSuperAdmin) {
-          updates.isSuperAdmin = true;
           data.isSuperAdmin = true;
-          needsUpdate = true;
         }
 
-        // If user profile does not have a clinicSlug, assign the current active clinic slug
+        // Apply active clinic fallback in memory without triggering background Firestore writes on login/boot
         if (!data.clinicSlug) {
           let activeSlug = 'revon-dental';
           let activeClinicId = '';
@@ -84,22 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             activeClinicId = localStorage.getItem('revon_active_clinic_id') || '';
           } catch (e) {}
-          updates.clinicSlug = activeSlug;
           data.clinicSlug = activeSlug;
           if (activeClinicId && !data.clinicId) {
-            updates.clinicId = activeClinicId;
             data.clinicId = activeClinicId;
           }
-          needsUpdate = true;
         }
 
-        if (needsUpdate) {
-          try {
-            await updateDoc(userRef, updates);
-          } catch (writeErr: any) {
-            console.warn("Could not persist user profile sync (using in-memory profile):", writeErr?.message || writeErr);
-          }
-        }
         return data;
       } else {
         const role: UserRole = isSuperAdminUser ? 'super-admin' : 'patient';
@@ -127,7 +118,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clinicSlug: activeSlug,
           ...(activeClinicId ? { clinicId: activeClinicId } : {})
         };
-        await setDoc(userRef, newProfile);
+        const createdKey = `revon_profile_write_attempted_${firebaseUser.uid}`;
+        let alreadyAttempted = false;
+        try {
+          alreadyAttempted = sessionStorage.getItem(createdKey) === '1';
+        } catch {}
+
+        if (!alreadyAttempted && !isFirestoreQuotaExhausted()) {
+          try {
+            sessionStorage.setItem(createdKey, '1');
+          } catch {}
+          try {
+            await runWithWriteTimeout(setDoc(userRef, newProfile), 4000);
+          } catch (createErr: any) {
+            if (isQuotaExhaustedError(createErr)) {
+              markFirestoreQuotaExhausted();
+            }
+            console.warn("Could not persist new user profile (using in-memory profile):", createErr?.message || createErr);
+          }
+        }
         return newProfile;
       }
     } catch (error) {
@@ -255,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(targetClinicId ? { clinicId: targetClinicId } : {})
       };
       
-      await setDoc(doc(db, 'users', credential.user.uid), newProfile);
+      await executeFirestoreWrite(() => setDoc(doc(db, 'users', credential.user.uid), newProfile));
       setUserProfile(newProfile);
     } catch (err: any) {
       throw mapAuthError(err);
@@ -298,7 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfileData = async (data: Partial<UserProfile>) => {
     if (!user) throw new Error("No authenticated user");
     const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, data);
+    await executeFirestoreWrite(() => updateDoc(userRef, data));
     
     // Update local state
     if (userProfile) {

@@ -18,7 +18,8 @@ import {
   calculateMonthFinances,
   calculateSixMonthTrend
 } from '../utils/clinicFinanceSync';
-import { matchesClinicScope } from '../utils/clinicDoctorScope';
+import { isAdminRole, matchesClinicScope } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 import { PrintPreviewModal } from './PrintPreviewModal';
@@ -100,11 +101,7 @@ export function FinanceDashboard({
   const selectedMonthLabel = `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`;
 
   // Role verification
-  const isAdminOrSuperAdmin = Boolean(
-    userProfile?.role === 'admin' || 
-    userProfile?.role === 'super-admin' || 
-    userProfile?.isSuperAdmin
-  );
+  const isAdminOrSuperAdmin = isAdminRole(userProfile?.role, userProfile?.isSuperAdmin);
 
   // ---------------------------------------------------------------------------
   // Firestore Real-Time Subscriptions
@@ -418,7 +415,7 @@ export function FinanceDashboard({
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(docRef, payload, { merge: true });
+      await executeFirestoreWrite(() => setDoc(docRef, payload, { merge: true }));
       setStatusMessage({ 
         type: 'success', 
         text: `Monthly expenses for ${selectedMonthLabel} saved successfully!` 
@@ -483,19 +480,21 @@ export function FinanceDashboard({
       const docId = `${clinicSlug}_${selectedYear}_${String(selectedMonth).padStart(2, '0')}`;
       const docRef = doc(db, 'monthly_finances', docId);
 
-      await setDoc(
-        docRef,
-        {
-          id: docId,
-          clinicSlug,
-          year: selectedYear,
-          month: selectedMonth,
-          monthKey: selectedMonthKey,
-          monthLabel: selectedMonthLabel,
-          voucherTargetAmount: val,
-          updatedAt: new Date().toISOString()
-        },
-        { merge: true }
+      await executeFirestoreWrite(() =>
+        setDoc(
+          docRef,
+          {
+            id: docId,
+            clinicSlug,
+            year: selectedYear,
+            month: selectedMonth,
+            monthKey: selectedMonthKey,
+            monthLabel: selectedMonthLabel,
+            voucherTargetAmount: val,
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        )
       );
 
       setStatusMessage({
@@ -604,9 +603,9 @@ export function FinanceDashboard({
       };
 
       if (editingExpense) {
-        await updateDoc(doc(db, 'expenses', editingExpense.id), expenseData);
+        await executeFirestoreWrite(() => updateDoc(doc(db, 'expenses', editingExpense.id), expenseData));
       } else {
-        await addDoc(collection(db, 'expenses'), expenseData);
+        await executeFirestoreWrite(() => addDoc(collection(db, 'expenses'), expenseData));
       }
 
       setShowAddExpenseModal(false);
@@ -624,10 +623,12 @@ export function FinanceDashboard({
     const currentType = expense.voucherType || 'paid';
     const newType = currentType === 'paid' ? 'collected' : 'paid';
     try {
-      await updateDoc(doc(db, 'expenses', expense.id), {
-        voucherType: newType,
-        updatedAt: new Date().toISOString()
-      });
+      await executeFirestoreWrite(() =>
+        updateDoc(doc(db, 'expenses', expense.id), {
+          voucherType: newType,
+          updatedAt: new Date().toISOString()
+        })
+      );
       setStatusMessage({
         type: 'success',
         text: `Voucher "${expense.title}" updated to ${newType === 'paid' ? 'Paid (Expense Outflow)' : 'Collected (Direct Inflow)'}.`
@@ -640,7 +641,7 @@ export function FinanceDashboard({
   const handleDeleteExpense = async (id: string, title: string) => {
     if (!isAdminOrSuperAdmin) return;
     try {
-      await deleteDoc(doc(db, 'expenses', id));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'expenses', id)));
       setStatusMessage({ type: 'success', text: `Expense voucher "${title}" was deleted.` });
     } catch (err: any) {
       console.error('Failed to delete expense:', err);
@@ -652,10 +653,12 @@ export function FinanceDashboard({
     if (!isAdminOrSuperAdmin) return;
     const newStatus = expense.paidStatus === 'paid' ? 'pending' : 'paid';
     try {
-      await updateDoc(doc(db, 'expenses', expense.id), {
-        paidStatus: newStatus,
-        updatedAt: new Date().toISOString()
-      });
+      await executeFirestoreWrite(() =>
+        updateDoc(doc(db, 'expenses', expense.id), {
+          paidStatus: newStatus,
+          updatedAt: new Date().toISOString()
+        })
+      );
     } catch (err) {
       console.error('Failed to toggle expense status:', err);
     }

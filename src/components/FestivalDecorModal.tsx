@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useFestival, FESTIVAL_PRESETS } from '../context/FestivalContext';
 import { useAuth } from '../context/AuthContext';
 import { FestivalType, ParticleType, ParticleIntensity } from '../types';
+import { isAdminRole } from '../utils/clinicDoctorScope';
 import { 
   Sparkles, 
   X, 
@@ -41,7 +42,7 @@ export function FestivalDecorModal({ isOpen, onClose }: FestivalDecorModalProps)
   const { userProfile } = useAuth();
 
   const isSuperAdmin = Boolean(userProfile?.isSuperAdmin);
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super-admin';
+  const isAdmin = isAdminRole(userProfile?.role, isSuperAdmin);
 
   // Local form state
   const [formData, setFormData] = useState(festivalConfig);

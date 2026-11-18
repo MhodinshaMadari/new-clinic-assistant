@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FestivalConfig, FestivalType, ParticleType, ParticleIntensity } from '../types';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 
 export const FESTIVAL_PRESETS: Record<FestivalType, Omit<FestivalConfig, 'updatedAt' | 'updatedBy'>> = {
   eid: {
@@ -147,7 +148,7 @@ export function FestivalProvider({ children }: { children: ReactNode }) {
     setFestivalConfig(updated);
     try {
       localStorage.setItem('revon_festival_config', JSON.stringify(updated));
-      await setDoc(doc(db, 'settings', 'festival'), updated, { merge: true });
+      await executeFirestoreWrite(() => setDoc(doc(db, 'settings', 'festival'), updated, { merge: true }));
     } catch (err) {
       console.warn("Failed to persist festival config to Firestore:", err);
     }

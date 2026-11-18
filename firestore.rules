@@ -35,7 +35,7 @@ service cloud.firestore {
         isKnownAdminEmail() ||
         !userDocExists() ||
         (getUserData().get('isSuperAdmin', false) == true) ||
-        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'dentist', 'doctor', 'specialist', 'receptionist', 'staff', 'developer', 'clinic_admin'])
+        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'director', 'dentist', 'doctor', 'specialist', 'receptionist', 'staff', 'developer', 'clinic_admin'])
       );
     }
 
@@ -44,7 +44,7 @@ service cloud.firestore {
         isKnownAdminEmail() ||
         !userDocExists() ||
         (getUserData().get('isSuperAdmin', false) == true) ||
-        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'developer', 'clinic_admin'])
+        (getUserData().get('role', 'patient') in ['admin', 'super-admin', 'director', 'developer', 'clinic_admin'])
       );
     }
 

@@ -1,8 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useClinic } from '../context/ClinicContext';
 import { useClinicData } from '../hooks/useClinicData';
 import { useAuth } from '../context/AuthContext';
 import { getDefaultPractitionerSpecialty, isPractitionerRole, matchesClinicScope } from '../utils/clinicDoctorScope';
+import {
+  getQuotaErrorMessage,
+  isFirestoreQuotaExhausted,
+  isQuotaExhaustedError,
+  markFirestoreQuotaExhausted,
+  resolveEffectiveLiveStatus
+} from '../utils/firestoreUtils';
 import { 
   ClinicLiveStatus, 
   DoctorAvailabilityStatus, 
@@ -41,6 +48,13 @@ export function ClinicLiveStatusBar() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showDoctorDrawer, setShowDoctorDrawer] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+
+  const showErrorToast = (msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(null), 5000);
+  };
 
   // Clinic Scheduling Modal State
   const [showClinicScheduleModal, setShowClinicScheduleModal] = useState(false);
@@ -59,20 +73,8 @@ export function ClinicLiveStatusBar() {
   const [scheduleDoctorNote, setScheduleDoctorNote] = useState('');
   const [scheduleDoctorAutoRevert, setScheduleDoctorAutoRevert] = useState(true);
 
-  // If user is a patient or not logged in, they cannot manage status
-  if (!userProfile || userProfile.role === 'patient') {
-    return null;
-  }
-
-  const liveStatus: ClinicLiveStatus = activeClinic?.liveStatus || {
-    isOpen: true,
-    statusMode: 'open',
-    customNote: 'Walk-ins & scheduled appointments welcome',
-    expectedResumeTime: '',
-    doctorAvailability: {}
-  };
-
   const activeSlug = activeClinic?.slug || 'revon-dental';
+  const isStaffUser = Boolean(userProfile && userProfile.role !== 'patient');
 
   // Compile full list of doctors strictly scoped to registered practitioner accounts for the active clinic
   const doctorsList = useMemo(() => {
@@ -96,6 +98,64 @@ export function ClinicLiveStatusBar() {
     return list;
   }, [dentists, activeSlug, activeClinic?.id]);
 
+  // Evaluate expired scheduled windows cleanly at read time so UI stays live without polling writes
+  const liveStatus: ClinicLiveStatus = useMemo(
+    () => resolveEffectiveLiveStatus(activeClinic?.liveStatus, nowTick),
+    [activeClinic?.liveStatus, nowTick]
+  );
+
+  // Track slots observed active in this session so we only persist auto-revert once when they expire live
+  const observedActiveSlotKeysRef = useRef<Set<string>>(new Set());
+  const attemptedRevertKeysRef = useRef<Set<string>>(new Set());
+  const isAutoRevertingRef = useRef(false);
+  const activeClinicRef = useRef(activeClinic);
+  activeClinicRef.current = activeClinic;
+  const updateClinicRef = useRef(updateClinic);
+  updateClinicRef.current = updateClinic;
+
+  const hasFutureAutoRevertSlot = useMemo(() => {
+    const raw = activeClinic?.liveStatus;
+    if (!raw) return false;
+    const now = Date.now();
+    if (raw.scheduledSlot?.endTime && raw.scheduledSlot.autoRevert !== false) {
+      const endMs = Date.parse(raw.scheduledSlot.endTime);
+      if (!isNaN(endMs) && endMs > now) return true;
+    }
+    if (raw.doctorAvailability) {
+      for (const docItem of Object.values(raw.doctorAvailability)) {
+        if (docItem?.scheduledSlot?.endTime && docItem.scheduledSlot.autoRevert !== false) {
+          const docEndMs = Date.parse(docItem.scheduledSlot.endTime);
+          if (!isNaN(docEndMs) && docEndMs > now) return true;
+        }
+      }
+    }
+    return false;
+  }, [activeClinic?.liveStatus]);
+
+  // Record currently active (not-yet-expired) slots observed during this session
+  useEffect(() => {
+    if (!isStaffUser || !activeClinic?.id || !activeClinic.liveStatus) return;
+    const now = Date.now();
+    const raw = activeClinic.liveStatus;
+
+    if (raw.scheduledSlot?.endTime && raw.scheduledSlot.autoRevert !== false) {
+      const endMs = Date.parse(raw.scheduledSlot.endTime);
+      if (!isNaN(endMs) && endMs > now) {
+        observedActiveSlotKeysRef.current.add(`clinic:${activeClinic.id}:${raw.scheduledSlot.endTime}`);
+      }
+    }
+    if (raw.doctorAvailability) {
+      Object.entries(raw.doctorAvailability).forEach(([docId, docItem]) => {
+        if (docItem?.scheduledSlot?.endTime && docItem.scheduledSlot.autoRevert !== false) {
+          const endMs = Date.parse(docItem.scheduledSlot.endTime);
+          if (!isNaN(endMs) && endMs > now) {
+            observedActiveSlotKeysRef.current.add(`doc:${activeClinic.id}:${docId}:${docItem.scheduledSlot.endTime}`);
+          }
+        }
+      });
+    }
+  }, [isStaffUser, activeClinic?.id, activeClinic?.liveStatus]);
+
   // Format Helper: Get time string e.g. "02:30 PM" from Date
   const formatTimeDisplay = (date: Date): string => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -108,25 +168,39 @@ export function ClinicLiveStatusBar() {
     return `${h}:${m}`;
   };
 
-  // Automated schedule monitor: evaluates active slots and auto-reverts when expired
+  // Automated schedule monitor: only runs while an active future schedule is open and persists at most once when it expires
   useEffect(() => {
-    const checkSchedules = async () => {
-      if (!activeClinic?.id || !activeClinic.liveStatus) return;
-      const now = new Date();
-      let hasChanges = false;
-      const live = { ...activeClinic.liveStatus };
+    if (!isStaffUser || !hasFutureAutoRevertSlot) return;
 
-      // 1. Check clinic scheduled slot
-      if (live.scheduledSlot?.endTime) {
-        const endD = new Date(live.scheduledSlot.endTime);
-        const isExpired = !isNaN(endD.getTime()) && now >= endD;
-        if (isExpired && live.scheduledSlot.autoRevert !== false) {
+    const checkSchedules = async () => {
+      const nowMs = Date.now();
+      setNowTick(nowMs);
+
+      const clinic = activeClinicRef.current;
+      if (!clinic?.id || !clinic.liveStatus) return;
+      if (isAutoRevertingRef.current || isFirestoreQuotaExhausted()) return;
+
+      let hasChanges = false;
+      const live: ClinicLiveStatus = { ...clinic.liveStatus };
+      const keysToMark: string[] = [];
+
+      // 1. Check clinic scheduled slot (only persist if observed active earlier and not yet attempted)
+      if (live.scheduledSlot?.endTime && live.scheduledSlot.autoRevert !== false) {
+        const key = `clinic:${clinic.id}:${live.scheduledSlot.endTime}`;
+        const endMs = Date.parse(live.scheduledSlot.endTime);
+        if (
+          !isNaN(endMs) &&
+          nowMs >= endMs &&
+          observedActiveSlotKeysRef.current.has(key) &&
+          !attemptedRevertKeysRef.current.has(key)
+        ) {
           live.statusMode = 'open';
           live.isOpen = true;
           live.customNote = 'Scheduled window completed. Clinic is open.';
           live.expectedResumeTime = '';
-          live.scheduledSlot = undefined;
+          live.scheduledSlot = null;
           live.scheduledUntil = '';
+          keysToMark.push(key);
           hasChanges = true;
         }
       }
@@ -134,38 +208,64 @@ export function ClinicLiveStatusBar() {
       // 2. Check each doctor's scheduled slot
       if (live.doctorAvailability) {
         const updatedDocs = { ...live.doctorAvailability };
-        Object.keys(updatedDocs).forEach(docId => {
+        let docsChanged = false;
+        Object.keys(updatedDocs).forEach((docId) => {
           const docItem = updatedDocs[docId];
-          if (docItem?.scheduledSlot?.endTime) {
-            const docEndD = new Date(docItem.scheduledSlot.endTime);
-            if (!isNaN(docEndD.getTime()) && now >= docEndD && docItem.scheduledSlot.autoRevert !== false) {
+          if (docItem?.scheduledSlot?.endTime && docItem.scheduledSlot.autoRevert !== false) {
+            const key = `doc:${clinic.id}:${docId}:${docItem.scheduledSlot.endTime}`;
+            const docEndMs = Date.parse(docItem.scheduledSlot.endTime);
+            if (
+              !isNaN(docEndMs) &&
+              nowMs >= docEndMs &&
+              observedActiveSlotKeysRef.current.has(key) &&
+              !attemptedRevertKeysRef.current.has(key)
+            ) {
               updatedDocs[docId] = {
                 ...docItem,
                 status: 'available',
                 statusNote: 'Scheduled procedure completed',
                 scheduledUntil: '',
-                scheduledSlot: undefined,
-                updatedAt: new Date().toISOString(),
+                scheduledSlot: null,
+                updatedAt: new Date(nowMs).toISOString(),
                 updatedBy: 'Automated Schedule Manager'
               };
-              hasChanges = true;
+              keysToMark.push(key);
+              docsChanged = true;
             }
           }
         });
-        if (hasChanges) {
+        if (docsChanged) {
           live.doctorAvailability = updatedDocs;
+          hasChanges = true;
         }
       }
 
       if (hasChanges) {
-        live.updatedAt = new Date().toISOString();
-        await updateClinic(activeClinic.id, { liveStatus: live });
+        keysToMark.forEach((k) => attemptedRevertKeysRef.current.add(k));
+        isAutoRevertingRef.current = true;
+        try {
+          live.updatedAt = new Date(nowMs).toISOString();
+          await updateClinicRef.current(clinic.id, { liveStatus: live });
+        } catch (err) {
+          if (isQuotaExhaustedError(err)) {
+            markFirestoreQuotaExhausted();
+          } else {
+            console.warn('Auto-revert schedule write skipped:', err);
+          }
+        } finally {
+          isAutoRevertingRef.current = false;
+        }
       }
     };
 
-    const interval = setInterval(checkSchedules, 20000); // Check every 20s
+    const interval = setInterval(checkSchedules, 30000);
     return () => clearInterval(interval);
-  }, [activeClinic, updateClinic]);
+  }, [isStaffUser, hasFutureAutoRevertSlot]);
+
+  // If user is a patient or not logged in, they cannot manage status
+  if (!userProfile || userProfile.role === 'patient') {
+    return null;
+  }
 
   // Synchronize available doctors for the respective clinic scope alone
   const handleSyncAvailableDoctors = async () => {
@@ -209,7 +309,7 @@ export function ClinicLiveStatusBar() {
       setTimeout(() => setSuccessToast(null), 3500);
     } catch (err: any) {
       console.error('Failed to sync doctors:', err);
-      alert('Failed to sync doctors: ' + (err.message || 'Unknown error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to sync doctors'));
     } finally {
       setIsUpdating(false);
     }
@@ -241,8 +341,8 @@ export function ClinicLiveStatusBar() {
         statusMode: mode,
         customNote,
         expectedResumeTime,
-        scheduledSlot: undefined, // Clear schedule on manual override
-        scheduledUntil: undefined,
+        scheduledSlot: null, // Explicitly clear schedule in Firestore merge
+        scheduledUntil: '',
         updatedAt: new Date().toISOString(),
         updatedBy: userProfile.displayName || userProfile.role
       };
@@ -252,7 +352,7 @@ export function ClinicLiveStatusBar() {
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err: any) {
       console.error('Failed to update clinic status:', err);
-      alert('Failed to update clinic status: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to update clinic status'));
     } finally {
       setIsUpdating(false);
     }
@@ -273,7 +373,7 @@ export function ClinicLiveStatusBar() {
   // Apply Clinic Schedule
   const handleSaveClinicSchedule = async () => {
     if (!activeClinic || !scheduleClinicStart || !scheduleClinicEnd) {
-      alert('Please select both start and end times for the schedule.');
+      showErrorToast('Please select both start and end times for the schedule.');
       return;
     }
 
@@ -319,7 +419,7 @@ export function ClinicLiveStatusBar() {
       setTimeout(() => setSuccessToast(null), 3500);
     } catch (err: any) {
       console.error('Failed to schedule clinic status:', err);
-      alert('Failed to save schedule: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to save schedule'));
     } finally {
       setIsUpdating(false);
     }
@@ -337,7 +437,7 @@ export function ClinicLiveStatusBar() {
         customNote: 'Walk-ins & scheduled appointments welcome',
         expectedResumeTime: '',
         scheduledUntil: '',
-        scheduledSlot: undefined,
+        scheduledSlot: null,
         updatedAt: new Date().toISOString(),
         updatedBy: userProfile.displayName || userProfile.role
       };
@@ -345,7 +445,7 @@ export function ClinicLiveStatusBar() {
       setSuccessToast('Scheduled clinic window cleared. Clinic is Open.');
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err: any) {
-      alert('Failed to clear schedule: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to clear schedule'));
     } finally {
       setIsUpdating(false);
     }
@@ -369,8 +469,8 @@ export function ClinicLiveStatusBar() {
         status,
         statusNote: note !== undefined ? note : (currentDocAvail[dentistId]?.statusNote || ''),
         chairRoom: currentDocAvail[dentistId]?.chairRoom || 'Chair 1',
-        scheduledUntil: undefined, // Clear schedule on manual switch
-        scheduledSlot: undefined,
+        scheduledUntil: '', // Clear schedule on manual switch
+        scheduledSlot: null,
         updatedAt: new Date().toISOString(),
         updatedBy: userProfile.displayName || userProfile.role
       };
@@ -387,7 +487,7 @@ export function ClinicLiveStatusBar() {
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err: any) {
       console.error('Failed to update doctor availability:', err);
-      alert('Failed to update doctor status: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to update doctor status'));
     } finally {
       setIsUpdating(false);
     }
@@ -411,7 +511,7 @@ export function ClinicLiveStatusBar() {
   // Apply Doctor Schedule
   const handleSaveDoctorSchedule = async () => {
     if (!activeClinic || !schedulingDoctor || !scheduleDoctorStart || !scheduleDoctorEnd) {
-      alert('Please specify both start and end times for the doctor schedule.');
+      showErrorToast('Please specify both start and end times for the doctor schedule.');
       return;
     }
 
@@ -462,7 +562,7 @@ export function ClinicLiveStatusBar() {
       setTimeout(() => setSuccessToast(null), 3500);
     } catch (err: any) {
       console.error('Failed to schedule doctor:', err);
-      alert('Failed to save doctor schedule: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to save doctor schedule'));
     } finally {
       setIsUpdating(false);
     }
@@ -479,8 +579,8 @@ export function ClinicLiveStatusBar() {
           ...currentDocAvail[docId],
           status: 'available',
           statusNote: 'Available for consultations',
-          scheduledUntil: undefined,
-          scheduledSlot: undefined,
+          scheduledUntil: '',
+          scheduledSlot: null,
           updatedAt: new Date().toISOString(),
           updatedBy: userProfile.displayName || userProfile.role
         };
@@ -497,7 +597,7 @@ export function ClinicLiveStatusBar() {
       setSuccessToast(`${docName} schedule cleared. Now Available.`);
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err: any) {
-      alert('Failed to clear doctor schedule: ' + (err.message || 'Error'));
+      showErrorToast(getQuotaErrorMessage(err, 'Failed to clear doctor schedule'));
     } finally {
       setIsUpdating(false);
     }
@@ -548,6 +648,22 @@ export function ClinicLiveStatusBar() {
         <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center space-x-2 animate-fadeIn shadow-xs">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>{successToast}</span>
+        </div>
+      )}
+
+      {errorToast && (
+        <div className="p-2.5 bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-800 dark:text-rose-200 text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn shadow-xs">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+            <span>{errorToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorToast(null)}
+            className="text-rose-500 hover:text-rose-700 cursor-pointer shrink-0"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 

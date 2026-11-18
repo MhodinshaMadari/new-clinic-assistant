@@ -8,7 +8,7 @@
         "uid": { "type": "string", "description": "Unique identifier matching Firebase Auth UID" },
         "displayName": { "type": "string", "description": "Full name of the user" },
         "email": { "type": "string", "description": "User's email address" },
-        "role": { "type": "string", "enum": ["patient", "dentist", "receptionist", "admin"], "description": "The system role" },
+        "role": { "type": "string", "enum": ["patient", "dentist", "doctor", "specialist", "director", "receptionist", "admin", "super-admin"], "description": "The system role" },
         "phone": { "type": "string", "description": "User's contact phone number" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
         "dependents": {

@@ -20,14 +20,29 @@ import { RevonLogo } from './components/RevonLogo';
 import { APP_NAME } from './config/appConfig';
 import { db } from './firebase';
 import { collection, doc, getDocs, setDoc, addDoc, query, limit } from 'firebase/firestore';
-import { Sparkles, RefreshCw, ShieldAlert, Ban, AlertTriangle } from 'lucide-react';
+import {
+  clearFirestoreQuotaExhausted,
+  FIRESTORE_PRICING_URL,
+  FIRESTORE_QUOTA_UPGRADE_URL,
+  isFirestoreQuotaExhausted,
+  isQuotaExhaustedError,
+  markFirestoreQuotaExhausted,
+  runWithWriteTimeout,
+  subscribeQuotaStatus
+} from './utils/firestoreUtils';
+import { isAdminRole } from './utils/clinicDoctorScope';
+import { Sparkles, RefreshCw, ShieldAlert, Ban, AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Database seeder helper to pre-populate dentists and reviews if Firestore is clean
 async function seedDatabaseIfNeeded() {
   try {
+    if (isFirestoreQuotaExhausted()) return;
+    if (sessionStorage.getItem('revon_seed_attempted')) return;
     const seededFlag = localStorage.getItem('revon_dental_db_seeded_v3');
     if (seededFlag) return;
+
+    sessionStorage.setItem('revon_seed_attempted', '1');
 
     // Avoid redundant writes if database already contains seeded data
     const existingReviewsSnap = await getDocs(query(collection(db, 'reviews'), limit(1)));
@@ -73,7 +88,9 @@ async function seedDatabaseIfNeeded() {
     ];
 
     for (const d of dentistsToSeed) {
-      await setDoc(doc(db, 'users', d.uid), d);
+      if (isFirestoreQuotaExhausted()) return;
+      const ok = await runWithWriteTimeout(setDoc(doc(db, 'users', d.uid), d), 4000);
+      if (!ok || isFirestoreQuotaExhausted()) return;
     }
 
     // 2. Seed Reviews
@@ -105,7 +122,9 @@ async function seedDatabaseIfNeeded() {
     ];
 
     for (const r of reviewsToSeed) {
-      await addDoc(collection(db, 'reviews'), r);
+      if (isFirestoreQuotaExhausted()) return;
+      const ok = await runWithWriteTimeout(addDoc(collection(db, 'reviews'), r), 4000);
+      if (!ok || isFirestoreQuotaExhausted()) return;
     }
 
     // 3. Seed some dummy appointments to show in the Dentist panel
@@ -145,13 +164,16 @@ async function seedDatabaseIfNeeded() {
     ];
 
     for (const app of sampleAppointments) {
-      await addDoc(collection(db, 'appointments'), app);
+      if (isFirestoreQuotaExhausted()) return;
+      const ok = await runWithWriteTimeout(addDoc(collection(db, 'appointments'), app), 4000);
+      if (!ok || isFirestoreQuotaExhausted()) return;
     }
 
     localStorage.setItem('revon_dental_db_seeded_v3', 'true');
     console.log("Revon Advance Dental Care database seeding complete.");
   } catch (err: any) {
-    if (err?.code === 'resource-exhausted' || String(err?.message || '').includes('Quota')) {
+    if (isQuotaExhaustedError(err)) {
+      markFirestoreQuotaExhausted();
       console.warn("Firestore daily write quota exceeded; skipping initial seeding.");
     } else {
       console.warn("Seeding bypassed or failed (expected if permissions are tight):", err);
@@ -163,13 +185,25 @@ function MainApp() {
   const { user, userProfile, loading } = useAuth();
   const { activeClinic, selectClinicBySlug, toggleClinicStatus } = useClinic();
   const [currentView, setCurrentView] = useState('portfolio');
+  const [quotaExhausted, setQuotaExhausted] = useState(() => isFirestoreQuotaExhausted());
+  const [dismissedQuotaBanner, setDismissedQuotaBanner] = useState(false);
 
   const isSuperAdmin = Boolean(userProfile?.isSuperAdmin || userProfile?.role === 'super-admin');
   const isClinicDisabled = activeClinic && (activeClinic.status === 'disabled' || activeClinic.isDisabled === true);
 
   useEffect(() => {
+    const unsubscribe = subscribeQuotaStatus((exhausted) => {
+      setQuotaExhausted(exhausted);
+      if (exhausted) {
+        setDismissedQuotaBanner(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     // Only seed initial demo records when an authenticated admin opens an empty database
-    if (user && (isSuperAdmin || userProfile?.role === 'admin')) {
+    if (user && isAdminRole(userProfile?.role, isSuperAdmin)) {
       seedDatabaseIfNeeded();
     }
   }, [user, isSuperAdmin, userProfile?.role]);
@@ -318,6 +352,62 @@ function MainApp() {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100 transition-colors duration-200 relative">
       <FestivalPageFrame />
       <Navbar onNavigate={handleNavigate} currentView={currentView} />
+
+      {/* Dismissible Firestore Daily Write Quota Alert Banner */}
+      {quotaExhausted && !dismissedQuotaBanner && (
+        <div
+          role="alert"
+          className="bg-amber-50 dark:bg-amber-950/90 border-b border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-100 px-4 py-2.5 text-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2.5 z-40 shadow-xs"
+        >
+          <div className="flex items-start sm:items-center gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+            <div className="leading-snug">
+              <span className="font-bold">Firestore daily free-tier write limit reached.</span>{' '}
+              <span>
+                Reads remain active, and new writes are paused to prevent retry flooding until the daily reset (midnight PT) or plan upgrade.
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <a
+              href={FIRESTORE_QUOTA_UPGRADE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition-colors"
+            >
+              <span>Upgrade Database</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href={FIRESTORE_PRICING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-200/70 dark:bg-amber-900/70 hover:bg-amber-200 dark:hover:bg-amber-900 text-amber-950 dark:text-amber-100 font-bold text-[11px] rounded-lg transition-colors"
+            >
+              <span>Quota Info</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                clearFirestoreQuotaExhausted();
+                setDismissedQuotaBanner(true);
+              }}
+              className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-950 dark:text-amber-100 font-bold text-[11px] rounded-lg cursor-pointer transition-colors"
+            >
+              Retry Writes
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissedQuotaBanner(true)}
+              aria-label="Dismiss quota notice"
+              className="p-1 text-amber-700 dark:text-amber-300 hover:bg-amber-200/70 dark:hover:bg-amber-900/70 rounded-lg cursor-pointer transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Super Admin Top Notice Banner when viewing a disabled clinic */}
       {isClinicDisabled && isSuperAdmin && currentView !== 'dev-portal' && currentView !== 'clinic-search' && (

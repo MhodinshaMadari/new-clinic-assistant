@@ -30,8 +30,10 @@ import {
   filterClinicRegisteredDoctors,
   findRegisteredDoctorMatch,
   getDefaultPractitionerSpecialty,
+  isAdminRole,
   matchesClinicScope
 } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 import { PrintPreviewModal } from './PrintPreviewModal';
@@ -83,9 +85,7 @@ export function ExecutiveAnalyticsDashboard({
   const { activeClinic } = useClinic();
   const clinicSlug = activeClinic?.slug || 'revon-dental';
   const clinicName = activeClinic?.name || 'Revon Advance Dental Care';
-  const isAdminOrSuperAdmin = Boolean(
-    userProfile?.role === 'admin' || userProfile?.role === 'super-admin' || userProfile?.isSuperAdmin
-  );
+  const isAdminOrSuperAdmin = isAdminRole(userProfile?.role, userProfile?.isSuperAdmin);
 
   // System Date Anchors & Controlled Selected Month (synced with Finances & Expenses tab)
   const now = new Date();
@@ -786,20 +786,22 @@ export function ExecutiveAnalyticsDashboard({
       const docId = `${clinicSlug}_${currentYear}_${String(currentMonth).padStart(2, '0')}`;
       const docRef = doc(db, 'monthly_finances', docId);
 
-      await setDoc(
-        docRef,
-        {
-          id: docId,
-          clinicSlug,
-          year: currentYear,
-          month: currentMonth,
-          monthKey: currentMonthKey,
-          monthLabel: currentMonthLabel,
-          voucherTargetAmount: val,
-          setBy: userProfile?.displayName || userProfile?.email || 'Clinic Staff',
-          updatedAt: new Date().toISOString()
-        },
-        { merge: true }
+      await executeFirestoreWrite(() =>
+        setDoc(
+          docRef,
+          {
+            id: docId,
+            clinicSlug,
+            year: currentYear,
+            month: currentMonth,
+            monthKey: currentMonthKey,
+            monthLabel: currentMonthLabel,
+            voucherTargetAmount: val,
+            setBy: userProfile?.displayName || userProfile?.email || 'Clinic Staff',
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        )
       );
 
       setTargetSaveSuccess(true);
@@ -831,22 +833,24 @@ export function ExecutiveAnalyticsDashboard({
       const expDate = expenseDate || new Date().toISOString().split('T')[0];
       const mKey = expDate.substring(0, 7);
 
-      await addDoc(collection(db, 'expenses'), {
-        clinicSlug,
-        monthKey: mKey,
-        title: expenseTitle.trim(),
-        category: expenseCategory,
-        amount: amt,
-        date: expDate,
-        vendor: expenseVendor.trim() || 'Direct Expense',
-        paymentMode: expensePaymentMode,
-        receiptNumber: expenseReceiptNo.trim() || `EXP-${Date.now().toString().slice(-6)}`,
-        paidStatus: 'paid',
-        voucherType: 'paid',
-        createdBy: userProfile?.displayName || userProfile?.email || 'Clinic Assistant',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      await executeFirestoreWrite(() =>
+        addDoc(collection(db, 'expenses'), {
+          clinicSlug,
+          monthKey: mKey,
+          title: expenseTitle.trim(),
+          category: expenseCategory,
+          amount: amt,
+          date: expDate,
+          vendor: expenseVendor.trim() || 'Direct Expense',
+          paymentMode: expensePaymentMode,
+          receiptNumber: expenseReceiptNo.trim() || `EXP-${Date.now().toString().slice(-6)}`,
+          paidStatus: 'paid',
+          voucherType: 'paid',
+          createdBy: userProfile?.displayName || userProfile?.email || 'Clinic Assistant',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+      );
 
       setExpenseSuccess(true);
       setTimeout(() => {

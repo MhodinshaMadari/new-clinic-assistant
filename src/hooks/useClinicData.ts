@@ -6,8 +6,8 @@ import { db, auth } from '../firebase';
 import { UserProfile, TreatmentService, Review, ReminderLog, Surgeon, SocialHandle } from '../types';
 import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
-import { sanitizeFirestoreData } from '../utils/firestoreUtils';
 import { filterClinicRegisteredDoctors } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite, sanitizeFirestoreData } from '../utils/firestoreUtils';
 import QRCode from 'qrcode';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
@@ -545,7 +545,7 @@ export function useClinicData() {
     }
 
     try {
-      await addDoc(collection(db, 'reviews'), {
+      await executeFirestoreWrite(() => addDoc(collection(db, 'reviews'), {
         patientName: patientName.trim(),
         rating: Math.max(1, Math.min(5, Number(rating) || 5)),
         comment: comment.trim(),
@@ -559,7 +559,7 @@ export function useClinicData() {
         adminReplyBy: extras?.adminReplyBy || '',
         clinicSlug: activeSlug,
         createdAt: new Date().toISOString()
-      });
+      }));
     } catch (err) {
       console.error("Failed to add review:", err);
       throw err;
@@ -582,7 +582,7 @@ export function useClinicData() {
         updatedAt: new Date().toISOString()
       };
       delete dataToSave.id;
-      await setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true });
+      await executeFirestoreWrite(() => setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true }));
     } catch (err) {
       console.error("Failed to update review:", err);
       throw err;
@@ -592,7 +592,7 @@ export function useClinicData() {
   const deleteReview = async (id: string) => {
     try {
       const reviewRef = doc(db, 'reviews', id);
-      await deleteDoc(reviewRef);
+      await executeFirestoreWrite(() => deleteDoc(reviewRef));
     } catch (err) {
       console.error("Failed to delete review:", err);
       throw err;
@@ -617,7 +617,7 @@ export function useClinicData() {
         updatedAt: new Date().toISOString()
       };
       delete dataToSave.id;
-      await setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true });
+      await executeFirestoreWrite(() => setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true }));
     } catch (err) {
       console.error("Failed to reply to review:", err);
       throw err;
@@ -639,7 +639,7 @@ export function useClinicData() {
         updatedAt: new Date().toISOString()
       };
       delete dataToSave.id;
-      await setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true });
+      await executeFirestoreWrite(() => setDoc(reviewRef, sanitizeFirestoreData(dataToSave), { merge: true }));
     } catch (err) {
       console.error("Failed to toggle review visibility:", err);
       throw err;
@@ -741,7 +741,7 @@ export function useClinicData() {
         }
       }
 
-      await addDoc(collection(db, 'reminders'), {
+      await executeFirestoreWrite(() => addDoc(collection(db, 'reminders'), {
         appointmentId,
         patientEmail: email,
         sentAt: new Date().toISOString(),
@@ -751,7 +751,7 @@ export function useClinicData() {
         details: isEmailRemindersEnabled 
           ? `Manual Clinic Reminder: ${details}`
           : `Manual email suppressed: Patient has disabled email reminders in settings`
-      });
+      }));
     } catch (err) {
       console.error("Failed to trigger reminder:", err);
       throw err;
@@ -769,7 +769,7 @@ export function useClinicData() {
     phone?: string
   ) => {
     try {
-      await addDoc(collection(db, 'surgeons'), {
+      await executeFirestoreWrite(() => addDoc(collection(db, 'surgeons'), {
         displayName,
         specialty,
         bio,
@@ -780,7 +780,7 @@ export function useClinicData() {
         consultationTiming,
         clinicSlug: activeSlug,
         createdAt: new Date().toISOString()
-      });
+      }));
     } catch (err) {
       console.error("Failed to add surgeon:", err);
       throw err;
@@ -800,7 +800,7 @@ export function useClinicData() {
   ) => {
     try {
       const surgeonRef = doc(db, 'surgeons', id);
-      await setDoc(surgeonRef, {
+      await executeFirestoreWrite(() => setDoc(surgeonRef, {
         displayName,
         specialty,
         bio,
@@ -810,7 +810,7 @@ export function useClinicData() {
         consultationTiming,
         phone: phone || '',
         clinicSlug: activeSlug
-      }, { merge: true });
+      }, { merge: true }));
     } catch (err) {
       console.error("Failed to update surgeon:", err);
       throw err;
@@ -820,7 +820,7 @@ export function useClinicData() {
   const deleteSurgeon = async (id: string) => {
     try {
       const surgeonRef = doc(db, 'surgeons', id);
-      await deleteDoc(surgeonRef);
+      await executeFirestoreWrite(() => deleteDoc(surgeonRef));
     } catch (err) {
       console.error("Failed to delete surgeon:", err);
       throw err;
@@ -833,25 +833,25 @@ export function useClinicData() {
       const handleDocId = `social_handles_${activeSlug}`;
       
       // 1. Save to settings collection for clinic slug
-      await setDoc(doc(db, 'settings', handleDocId), {
+      await executeFirestoreWrite(() => setDoc(doc(db, 'settings', handleDocId), {
         handles: cleanHandles,
         updatedAt: new Date().toISOString(),
         clinicSlug: activeSlug
-      }, { merge: true });
+      }, { merge: true }));
 
       // 2. Save to global settings fallback
-      await setDoc(doc(db, 'settings', 'social_handles'), {
+      await executeFirestoreWrite(() => setDoc(doc(db, 'settings', 'social_handles'), {
         handles: cleanHandles,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      }, { merge: true }));
 
       // 3. Update clinic document directly in 'clinics' collection
       if (activeClinic?.id) {
         try {
-          await setDoc(doc(db, 'clinics', activeClinic.id), {
+          await executeFirestoreWrite(() => setDoc(doc(db, 'clinics', activeClinic.id), {
             socialHandles: cleanHandles,
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          }, { merge: true }));
         } catch (idErr) {
           console.warn("Direct update by clinic.id failed:", idErr);
         }
@@ -861,12 +861,12 @@ export function useClinicData() {
       try {
         const clinicQuery = query(collection(db, 'clinics'), where('slug', '==', activeSlug));
         const clinicSnap = await getDocs(clinicQuery);
-        clinicSnap.forEach((cDoc) => {
-          setDoc(cDoc.ref, {
+        for (const cDoc of clinicSnap.docs) {
+          await executeFirestoreWrite(() => setDoc(cDoc.ref, {
             socialHandles: cleanHandles,
             updatedAt: new Date().toISOString()
-          }, { merge: true }).catch((e) => console.warn("Failed to update clinic doc by slug query:", e));
-        });
+          }, { merge: true })).catch((e) => console.warn("Failed to update clinic doc by slug query:", e));
+        }
       } catch (cErr) {
         console.warn("Could not sync socialHandles directly to clinic doc by query:", cErr);
       }
@@ -888,7 +888,7 @@ export function useClinicData() {
     icon: string
   ) => {
     try {
-      await addDoc(collection(db, 'services'), {
+      await executeFirestoreWrite(() => addDoc(collection(db, 'services'), {
         name,
         description,
         durationMinutes: Number(durationMinutes) || 30,
@@ -898,7 +898,7 @@ export function useClinicData() {
         icon: icon || 'Sparkles',
         clinicSlug: activeSlug,
         createdAt: new Date().toISOString()
-      });
+      }));
     } catch (err) {
       console.error("Failed to create offered service:", err);
       throw err;
@@ -917,7 +917,7 @@ export function useClinicData() {
   ) => {
     try {
       const serviceRef = doc(db, 'services', id);
-      await setDoc(serviceRef, {
+      await executeFirestoreWrite(() => setDoc(serviceRef, {
         name,
         description,
         durationMinutes: Number(durationMinutes) || 30,
@@ -926,7 +926,7 @@ export function useClinicData() {
         isActive: Boolean(isActive),
         icon: icon || 'Sparkles',
         clinicSlug: activeSlug
-      }, { merge: true });
+      }, { merge: true }));
     } catch (err) {
       console.error("Failed to update offered service:", err);
       throw err;
@@ -936,7 +936,7 @@ export function useClinicData() {
   const deleteService = async (id: string) => {
     try {
       const serviceRef = doc(db, 'services', id);
-      await deleteDoc(serviceRef);
+      await executeFirestoreWrite(() => deleteDoc(serviceRef));
     } catch (err) {
       console.error("Failed to delete offered service:", err);
       throw err;

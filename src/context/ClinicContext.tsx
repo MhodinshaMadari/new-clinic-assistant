@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Clinic, ClinicLocation, ClinicFeatures, SocialHandle, ClinicFacility, ClinicGoogleReview, ClinicGoogleConfig } from '../types';
@@ -13,7 +13,14 @@ import {
   DEFAULT_GOOGLE_BUSINESS_PROFILE_ID,
   buildGoogleReviewUrls
 } from '../data/clinicMediaData';
-import { sanitizeFirestoreData } from '../utils/firestoreUtils';
+import {
+  executeFirestoreWrite,
+  isFirestoreQuotaExhausted,
+  isQuotaExhaustedError,
+  markFirestoreQuotaExhausted,
+  runWithWriteTimeout,
+  sanitizeFirestoreData
+} from '../utils/firestoreUtils';
 
 export const DEFAULT_CLINICS: Clinic[] = [
   {
@@ -203,23 +210,28 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const seedAndAssociateData = async () => {
       try {
+        if (isFirestoreQuotaExhausted()) return;
         const seededKey = 'revon_clinics_seeded_v2';
-        if (localStorage.getItem(seededKey)) return;
+        if (localStorage.getItem(seededKey) || sessionStorage.getItem(seededKey)) return;
 
         const { auth } = await import('../firebase');
         if (!auth.currentUser) return;
+        sessionStorage.setItem(seededKey, 'true');
 
         const snap = await getDocs(collection(db, 'clinics'));
         if (snap.empty) {
           console.log("Seeding initial clinics into Firestore...");
           for (const c of DEFAULT_CLINICS) {
-            await setDoc(doc(db, 'clinics', c.id), c);
+            if (isFirestoreQuotaExhausted()) return;
+            const ok = await runWithWriteTimeout(setDoc(doc(db, 'clinics', c.id), c), 4000);
+            if (!ok) return;
           }
         }
 
         localStorage.setItem(seededKey, 'true');
       } catch (err: any) {
-        if (err?.code === 'resource-exhausted' || String(err?.message || '').includes('Quota')) {
+        if (isQuotaExhaustedError(err)) {
+          markFirestoreQuotaExhausted();
           console.warn("Firestore daily write quota exceeded; using built-in clinic defaults.");
         } else {
           console.warn("Clinic seeding bypassed:", err);
@@ -466,29 +478,37 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         createdAt: now
       };
 
+      await executeFirestoreWrite(() => setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(newClinic)));
       setClinics(prev => [...prev.filter(c => c.id !== id), newClinic]);
-      await setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(newClinic));
       setActiveClinicSlug(newClinic.slug);
       return id;
     } catch (err) {
+      if (isQuotaExhaustedError(err)) {
+        markFirestoreQuotaExhausted();
+      }
       console.error("Failed to create clinic:", err);
       throw err;
     }
   };
 
-  const updateClinic = async (id: string, updates: Partial<Clinic>): Promise<void> => {
+  const updateClinic = useCallback(async (id: string, updates: Partial<Clinic>): Promise<void> => {
     try {
       const updatedData = {
         ...updates,
         updatedAt: new Date().toISOString()
       };
+      await executeFirestoreWrite(() =>
+        setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(updatedData), { merge: true })
+      );
       setClinics(prev => prev.map(c => c.id === id ? { ...c, ...updatedData } : c));
-      await setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(updatedData), { merge: true });
     } catch (err) {
+      if (isQuotaExhaustedError(err)) {
+        markFirestoreQuotaExhausted();
+      }
       console.error("Failed to update clinic:", err);
       throw err;
     }
-  };
+  }, []);
 
   const toggleClinicStatus = async (id: string, disabledState?: boolean): Promise<void> => {
     try {
@@ -504,9 +524,14 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date().toISOString()
       };
 
+      await executeFirestoreWrite(() =>
+        setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(updates), { merge: true })
+      );
       setClinics(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-      await setDoc(doc(db, 'clinics', id), sanitizeFirestoreData(updates), { merge: true });
     } catch (err) {
+      if (isQuotaExhaustedError(err)) {
+        markFirestoreQuotaExhausted();
+      }
       console.error("Failed to toggle clinic status:", err);
       throw err;
     }
@@ -550,9 +575,12 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
 
   const deleteClinic = async (id: string): Promise<void> => {
     try {
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'clinics', id)));
       setClinics(prev => prev.filter(c => c.id !== id));
-      await deleteDoc(doc(db, 'clinics', id));
     } catch (err) {
+      if (isQuotaExhaustedError(err)) {
+        markFirestoreQuotaExhausted();
+      }
       console.error("Failed to delete clinic:", err);
       throw err;
     }

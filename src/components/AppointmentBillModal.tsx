@@ -39,6 +39,7 @@ import { useAuth } from '../context/AuthContext';
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { buildClinicLetterhead, PrintDocumentPayload } from '../utils/printService';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 
 // Helper to recursively remove undefined values from Firestore payloads
 const sanitizeFirestoreData = (data: any): any => {
@@ -501,11 +502,13 @@ export function AppointmentBillModal({
 
     try {
       // 1. Save to `bills` collection using sanitizeFirestoreData to eliminate any undefined
-      await setDoc(doc(db, 'bills', appointment.id), sanitizeFirestoreData({
-        ...billData,
-        notes: notes.trim(),
-        updatedAt: nowIso
-      }));
+      await executeFirestoreWrite(() =>
+        setDoc(doc(db, 'bills', appointment.id), sanitizeFirestoreData({
+          ...billData,
+          notes: notes.trim(),
+          updatedAt: nowIso
+        }))
+      );
 
       // 2. Synchronize to `invoices` collection
       const invoicesRef = collection(db, 'invoices');
@@ -554,18 +557,20 @@ export function AppointmentBillModal({
         const existingInvDoc = invoiceSnap.docs[0];
         savedInvoiceDocId = existingInvDoc.id;
         savedInvoiceNumber = existingInvDoc.data().invoiceNumber || savedInvoiceNumber;
-        await updateDoc(doc(db, 'invoices', existingInvDoc.id), invoicePayload);
+        await executeFirestoreWrite(() => updateDoc(doc(db, 'invoices', existingInvDoc.id), invoicePayload));
       } else if (existingInvoice?.id) {
-        await updateDoc(doc(db, 'invoices', existingInvoice.id), invoicePayload);
+        await executeFirestoreWrite(() => updateDoc(doc(db, 'invoices', existingInvoice.id), invoicePayload));
       } else {
         // Create new invoice document
         const newInvoiceNum = `INV-${Date.now().toString().slice(-6)}`;
         savedInvoiceNumber = newInvoiceNum;
-        const newDocRef = await addDoc(collection(db, 'invoices'), {
-          ...invoicePayload,
-          invoiceNumber: newInvoiceNum,
-          createdAt: nowIso
-        });
+        const newDocRef = await executeFirestoreWrite(() =>
+          addDoc(collection(db, 'invoices'), {
+            ...invoicePayload,
+            invoiceNumber: newInvoiceNum,
+            createdAt: nowIso
+          })
+        );
         savedInvoiceDocId = newDocRef.id;
       }
 
@@ -601,24 +606,26 @@ export function AppointmentBillModal({
     setErrorMessage(null);
 
     try {
-      // 1. Delete from bills collection
-      await deleteDoc(doc(db, 'bills', appointment.id));
+      // 1. Delete from bills collection and matching invoices
+      await executeFirestoreWrite(async () => {
+        await deleteDoc(doc(db, 'bills', appointment.id));
 
-      // 2. Query and delete any matching invoices
-      const invoicesRef = collection(db, 'invoices');
-      const invoiceQuery = query(invoicesRef, where('appointmentId', '==', appointment.id));
-      const invoiceSnap = await getDocs(invoiceQuery);
+        // 2. Query and delete any matching invoices
+        const invoicesRef = collection(db, 'invoices');
+        const invoiceQuery = query(invoicesRef, where('appointmentId', '==', appointment.id));
+        const invoiceSnap = await getDocs(invoiceQuery);
 
-      const deletePromises: Promise<void>[] = [];
-      invoiceSnap.forEach((invDoc) => {
-        deletePromises.push(deleteDoc(doc(db, 'invoices', invDoc.id)));
+        const deletePromises: Promise<void>[] = [];
+        invoiceSnap.forEach((invDoc) => {
+          deletePromises.push(deleteDoc(doc(db, 'invoices', invDoc.id)));
+        });
+
+        if (existingInvoice?.id) {
+          deletePromises.push(deleteDoc(doc(db, 'invoices', existingInvoice.id)));
+        }
+
+        await Promise.all(deletePromises);
       });
-
-      if (existingInvoice?.id) {
-        deletePromises.push(deleteDoc(doc(db, 'invoices', existingInvoice.id)));
-      }
-
-      await Promise.all(deletePromises);
 
       if (onDelete) {
         onDelete(appointment.id);

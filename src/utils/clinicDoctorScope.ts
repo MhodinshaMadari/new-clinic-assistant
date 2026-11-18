@@ -1,9 +1,9 @@
 import { UserProfile, UserRole } from '../types';
 
-export const PRACTITIONER_ROLES: ReadonlyArray<UserRole> = ['dentist', 'doctor', 'specialist'];
+export const PRACTITIONER_ROLES: ReadonlyArray<UserRole> = ['dentist', 'doctor', 'specialist', 'director'];
 
 /**
- * Returns true if the given role represents a clinical doctor / dentist / specialist.
+ * Returns true if the given role represents a clinical doctor / dentist / specialist / medical director.
  */
 export function isPractitionerRole(role?: string | null): boolean {
   if (!role) return false;
@@ -11,7 +11,24 @@ export function isPractitionerRole(role?: string | null): boolean {
   return (
     normalized === 'dentist' ||
     normalized === 'doctor' ||
-    normalized === 'specialist'
+    normalized === 'specialist' ||
+    normalized === 'director'
+  );
+}
+
+/**
+ * Returns true if the given role has Clinic Admin privileges (admin, director, or super-admin).
+ * Note: 'director' combines full clinical practitioner + clinic admin capabilities without elevating to cross-clinic super-admin.
+ */
+export function isAdminRole(role?: string | null, isSuperAdminFlag?: boolean): boolean {
+  if (isSuperAdminFlag) return true;
+  if (!role) return false;
+  const normalized = role.trim().toLowerCase();
+  return (
+    normalized === 'admin' ||
+    normalized === 'director' ||
+    normalized === 'super-admin' ||
+    normalized === 'superadmin'
   );
 }
 
@@ -103,6 +120,8 @@ export function filterClinicRegisteredDoctors(
  */
 export function getDefaultPractitionerSpecialty(role?: UserRole | string): string {
   switch ((role || '').toLowerCase()) {
+    case 'director':
+      return 'Medical Director & Attending Physician';
     case 'doctor':
       return 'Attending Physician';
     case 'specialist':

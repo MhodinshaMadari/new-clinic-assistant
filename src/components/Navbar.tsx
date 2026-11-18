@@ -10,6 +10,7 @@ import { FestivalLogoWrapper, FestivalTitleCompanion, FestivalNavbarBorder } fro
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ClinicNotification } from '../types';
+import { isAdminRole } from '../utils/clinicDoctorScope';
 
 interface NavbarProps {
   onNavigate: (view: string, clinicSlug?: string) => void;
@@ -22,7 +23,7 @@ export function Navbar({ onNavigate, currentView }: NavbarProps) {
   const { clinics, activeClinic, selectClinicBySlug } = useClinic();
   
   const isSuperAdmin = Boolean(userProfile?.isSuperAdmin || userProfile?.role === 'super-admin');
-  const isAdmin = Boolean(userProfile?.role === 'admin' || isSuperAdmin);
+  const isAdmin = isAdminRole(userProfile?.role, isSuperAdmin);
   
   const [isOpen, setIsOpen] = React.useState(false);
   const [showClinicDropdown, setShowClinicDropdown] = React.useState(false);

@@ -1,4 +1,4 @@
-export type UserRole = 'patient' | 'dentist' | 'doctor' | 'specialist' | 'receptionist' | 'admin' | 'super-admin';
+export type UserRole = 'patient' | 'dentist' | 'doctor' | 'specialist' | 'director' | 'receptionist' | 'admin' | 'super-admin';
 
 export interface Dependent {
   id: string;
@@ -394,7 +394,7 @@ export interface DoctorAvailability {
   statusNote?: string;
   chairRoom?: string;
   scheduledUntil?: string;
-  scheduledSlot?: ScheduledStatusSlot;
+  scheduledSlot?: ScheduledStatusSlot | null;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -413,7 +413,7 @@ export interface ClinicLiveStatus {
   customNote?: string;
   expectedResumeTime?: string;
   scheduledUntil?: string;
-  scheduledSlot?: ScheduledClinicSlot;
+  scheduledSlot?: ScheduledClinicSlot | null;
   updatedAt?: string;
   updatedBy?: string;
   doctorAvailability?: Record<string, DoctorAvailability>;

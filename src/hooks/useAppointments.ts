@@ -18,6 +18,7 @@ import { Appointment, AppointmentStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useClinic } from '../context/ClinicContext';
 import { matchesClinicScope } from '../utils/clinicDoctorScope';
+import { executeFirestoreWrite } from '../utils/firestoreUtils';
 import QRCode from 'qrcode';
 // @ts-ignore
 import mainLogo from '../assets/images/main_logo_1783512166748.jpg';
@@ -133,7 +134,7 @@ export function useAppointments() {
         updatedAt: now
       };
 
-      const appRef = await addDoc(collection(db, 'appointments'), appData);
+      const appRef = await executeFirestoreWrite(() => addDoc(collection(db, 'appointments'), appData));
 
       let previewUrl = null;
       let emailStatus = 'sent';
@@ -243,7 +244,7 @@ export function useAppointments() {
           emailStatus = 'failed';
         }
 
-        await addDoc(collection(db, 'reminders'), {
+        await executeFirestoreWrite(() => addDoc(collection(db, 'reminders'), {
           appointmentId: appRef.id,
           patientEmail: data.patientEmail,
           sentAt: now,
@@ -251,10 +252,10 @@ export function useAppointments() {
           status: emailStatus,
           previewUrl: previewUrl,
           details: `Booking confirmation dispatched for ${data.treatment} on ${new Date(data.dateTime).toLocaleString()}`
-        });
+        }));
       } else {
         // Log that reminder email was skipped due to patient opt-out preference
-        await addDoc(collection(db, 'reminders'), {
+        await executeFirestoreWrite(() => addDoc(collection(db, 'reminders'), {
           appointmentId: appRef.id,
           patientEmail: data.patientEmail,
           sentAt: now,
@@ -262,7 +263,7 @@ export function useAppointments() {
           status: 'disabled',
           previewUrl: null,
           details: `Booking confirmation email suppressed: Patient has disabled email reminders in profile preferences`
-        });
+        }));
       }
 
       return appRef.id;
@@ -282,7 +283,7 @@ export function useAppointments() {
       if (additionalNotes !== undefined) {
         updateData.notes = additionalNotes;
       }
-      await updateDoc(appRef, updateData);
+      await executeFirestoreWrite(() => updateDoc(appRef, updateData));
 
       // Get patient details for real-time email
       const appSnap = await getDoc(appRef);
@@ -402,7 +403,7 @@ export function useAppointments() {
       }
 
       // Log a status update reminder log
-      await addDoc(collection(db, 'reminders'), {
+      await executeFirestoreWrite(() => addDoc(collection(db, 'reminders'), {
         appointmentId,
         patientEmail,
         sentAt: new Date().toISOString(),
@@ -412,7 +413,7 @@ export function useAppointments() {
         details: isEmailRemindersEnabled
           ? `Status updated to [${status.toUpperCase()}] for your dental appointment.`
           : `Status update email suppressed: Patient has disabled email reminders in profile preferences.`
-      });
+      }));
 
     } catch (err: any) {
       console.error("Error updating appointment:", err);
@@ -422,7 +423,7 @@ export function useAppointments() {
 
   const deleteAppointment = async (appointmentId: string) => {
     try {
-      await deleteDoc(doc(db, 'appointments', appointmentId));
+      await executeFirestoreWrite(() => deleteDoc(doc(db, 'appointments', appointmentId)));
     } catch (err: any) {
       console.error("Error deleting appointment:", err);
       throw new Error(err.message || "Failed to delete appointment");
